@@ -18,25 +18,57 @@ import (
 
 // GoplsProxy wraps gopls subprocess
 type GoplsProxy struct {
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stdout    *bufio.Reader
-	stderr    io.ReadCloser
-	reqID     int
-	reqMu     sync.Mutex
-	rootDir   string
-	tempDir   string
-	ready     bool
-	responses map[int]chan json.RawMessage
-	respMu    sync.RWMutex
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     *bufio.Reader
+	stderr     io.ReadCloser
+	reqID      int
+	reqMu      sync.Mutex
+	rootDir    string
+	tempDir    string
+	ready      bool
+	responses  map[int]chan json.RawMessage
+	respMu     sync.RWMutex
+	openedDocs map[string]int // URI -> version
+	docsMu     sync.RWMutex
 }
 
 // NewGoplsProxy spawns gopls and initializes it
 func NewGoplsProxy(rootDir string) (*GoplsProxy, error) {
-	// Create temp directory for virtual Go files in the project root
-	// This ensures gopls can resolve module imports
-	tempDir := filepath.Join(rootDir, ".gxc-cache")
+	// Create temp directory for virtual Go files in the project .galaxy folder
+	// This ensures gopls can resolve module imports without cluttering user's repo
+	tempDir := filepath.Join(rootDir, ".galaxy", "cache")
 	os.MkdirAll(tempDir, 0755)
+
+	// Create go.mod in cache dir to make it a separate module
+	// This avoids conflicts with malformed import paths in parent module
+	goModPath := filepath.Join(tempDir, "go.mod")
+	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
+		// Read parent go.mod to get module name and go version
+		parentGoMod := filepath.Join(rootDir, "go.mod")
+		var moduleName string
+		var goVersion string
+		if data, err := os.ReadFile(parentGoMod); err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "module ") {
+					moduleName = strings.TrimSpace(strings.TrimPrefix(line, "module"))
+				} else if strings.HasPrefix(line, "go ") {
+					goVersion = strings.TrimSpace(strings.TrimPrefix(line, "go"))
+				}
+			}
+		}
+		if moduleName == "" {
+			moduleName = "gxccache"
+		}
+		if goVersion == "" {
+			goVersion = "1.21"
+		}
+
+		// Write minimal go.mod
+		goModContent := fmt.Sprintf("module %s\n\ngo %s\n\nreplace %s => ..\n", moduleName+"/cache", goVersion, moduleName)
+		os.WriteFile(goModPath, []byte(goModContent), 0644)
+	}
 
 	cmd := exec.Command("gopls", "-mode=stdio")
 
@@ -60,13 +92,14 @@ func NewGoplsProxy(rootDir string) (*GoplsProxy, error) {
 	}
 
 	gp := &GoplsProxy{
-		cmd:       cmd,
-		stdin:     stdin,
-		stdout:    bufio.NewReader(stdout),
-		stderr:    stderr,
-		rootDir:   rootDir,
-		tempDir:   tempDir,
-		responses: make(map[int]chan json.RawMessage),
+		cmd:        cmd,
+		stdin:      stdin,
+		stdout:     bufio.NewReader(stdout),
+		stderr:     stderr,
+		rootDir:    rootDir,
+		tempDir:    tempDir,
+		responses:  make(map[int]chan json.RawMessage),
+		openedDocs: make(map[string]int),
 	}
 
 	// Start response reader
@@ -384,25 +417,51 @@ func (gp *GoplsProxy) Completion(ctx context.Context, goPath string, line, char 
 
 	fileURI := "file://" + goPath
 
-	// Send didOpen
-	if err := gp.notify("textDocument/didOpen", map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri":        fileURI,
-			"languageId": "go",
-			"version":    1,
-			"text":       string(content),
-		},
-	}); err != nil {
-		return nil, err
+	gp.docsMu.Lock()
+	version, alreadyOpen := gp.openedDocs[fileURI]
+	if !alreadyOpen {
+		// First time - send didOpen
+		if err := gp.notify("textDocument/didOpen", map[string]interface{}{
+			"textDocument": map[string]interface{}{
+				"uri":        fileURI,
+				"languageId": "go",
+				"version":    1,
+				"text":       string(content),
+			},
+		}); err != nil {
+			gp.docsMu.Unlock()
+			return nil, err
+		}
+		gp.openedDocs[fileURI] = 1
+	} else {
+		// Already open - send didChange
+		version++
+		if err := gp.notify("textDocument/didChange", map[string]interface{}{
+			"textDocument": map[string]interface{}{
+				"uri":     fileURI,
+				"version": version,
+			},
+			"contentChanges": []interface{}{
+				map[string]interface{}{
+					"text": string(content),
+				},
+			},
+		}); err != nil {
+			gp.docsMu.Unlock()
+			return nil, err
+		}
+		gp.openedDocs[fileURI] = version
 	}
+	gp.docsMu.Unlock()
 
-	// Send didSave to trigger gopls indexing
-	if err := gp.notify("textDocument/didSave", map[string]interface{}{
-		"textDocument": map[string]interface{}{
-			"uri": fileURI,
-		},
-	}); err != nil {
-		return nil, err
+	// If just opened, request diagnostics to force gopls to parse/index
+	if !alreadyOpen {
+		// This is fire-and-forget, we don't care about the result
+		go gp.request("textDocument/diagnostic", map[string]interface{}{
+			"textDocument": map[string]interface{}{
+				"uri": fileURI,
+			},
+		})
 	}
 
 	// Request completion
