@@ -63,7 +63,7 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 				TriggerCharacters: []string{"{", ":", " ", "."},
 			},
 			HoverProvider:      true,
-			DefinitionProvider: true,
+			DefinitionProvider: interface{}(true),
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "gxc-language-server",
