@@ -10,7 +10,11 @@ import (
 // PositionMapper maps between .gxc and virtual .go positions
 type PositionMapper struct {
 	frontmatterStart int // Line number where frontmatter starts (after first ---)
+	frontmatterEnd   int // Line number where frontmatter ends (second ---)
+	importBlockStart int // Line in .gxc where import block starts
+	importBlockEnd   int // Line in .gxc where import block ends
 	importLineCount  int // Number of import lines
+	content          string
 }
 
 // NewPositionMapper analyzes gxc content
@@ -18,10 +22,14 @@ func NewPositionMapper(content string) *PositionMapper {
 	lines := strings.Split(content, "\n")
 	pm := &PositionMapper{
 		frontmatterStart: -1,
+		frontmatterEnd:   -1,
+		importBlockStart: -1,
+		importBlockEnd:   -1,
+		content:          content,
 	}
 
 	inFrontmatter := false
-	lineNum := 0
+	inImportBlock := false
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -31,14 +39,29 @@ func NewPositionMapper(content string) *PositionMapper {
 				inFrontmatter = true
 				pm.frontmatterStart = i + 1
 			} else {
+				pm.frontmatterEnd = i
 				break
 			}
-		} else if inFrontmatter && strings.HasPrefix(trimmed, "import") {
-			lineNum++
+		} else if inFrontmatter {
+			if strings.HasPrefix(trimmed, "import (") {
+				inImportBlock = true
+				pm.importBlockStart = i
+			} else if inImportBlock && strings.Contains(trimmed, ")") {
+				pm.importBlockEnd = i
+				inImportBlock = false
+			} else if inImportBlock {
+				pm.importLineCount++
+			} else if strings.HasPrefix(trimmed, "import ") {
+				// Single import line
+				if pm.importBlockStart == -1 {
+					pm.importBlockStart = i
+				}
+				pm.importBlockEnd = i
+				pm.importLineCount++
+			}
 		}
 	}
 
-	pm.importLineCount = lineNum
 	return pm
 }
 
@@ -129,16 +152,72 @@ func (pm *PositionMapper) TransformCompletionItem(item protocol.CompletionItem) 
 		item.TextEdit = &transformed
 	}
 
-	// Transform AdditionalTextEdits if present
+	// Transform AdditionalTextEdits if present - these are usually imports
 	if len(item.AdditionalTextEdits) > 0 {
-		transformed := make([]protocol.TextEdit, len(item.AdditionalTextEdits))
-		for i, edit := range item.AdditionalTextEdits {
-			transformed[i] = pm.TransformTextEdit(edit)
+		transformed := make([]protocol.TextEdit, 0, len(item.AdditionalTextEdits))
+		for _, edit := range item.AdditionalTextEdits {
+			// Check if this is an import addition
+			if pm.isImportEdit(edit) {
+				// Map to gxc import location
+				gxcEdit := pm.transformImportEdit(edit)
+				if gxcEdit != nil {
+					transformed = append(transformed, *gxcEdit)
+				}
+			} else {
+				transformed = append(transformed, pm.TransformTextEdit(edit))
+			}
 		}
 		item.AdditionalTextEdits = transformed
 	}
 
 	return item
+}
+
+// isImportEdit checks if a TextEdit is adding an import
+func (pm *PositionMapper) isImportEdit(edit protocol.TextEdit) bool {
+	return strings.Contains(edit.NewText, "import")
+}
+
+// transformImportEdit transforms an import addition from .go to .gxc
+func (pm *PositionMapper) transformImportEdit(edit protocol.TextEdit) *protocol.TextEdit {
+	// Extract import path from edit
+	importLine := strings.TrimSpace(edit.NewText)
+
+	// Determine where to insert in .gxc
+	if pm.importBlockStart != -1 {
+		// Import block exists - add to end of block
+		insertLine := pm.importBlockEnd
+		if pm.importBlockEnd > pm.importBlockStart+1 {
+			// Multi-line import block - insert before closing )
+			return &protocol.TextEdit{
+				Range: protocol.Range{
+					Start: protocol.Position{Line: uint32(insertLine), Character: 0},
+					End:   protocol.Position{Line: uint32(insertLine), Character: 0},
+				},
+				NewText: "\t" + importLine + "\n",
+			}
+		} else {
+			// Single import - add after
+			return &protocol.TextEdit{
+				Range: protocol.Range{
+					Start: protocol.Position{Line: uint32(insertLine + 1), Character: 0},
+					End:   protocol.Position{Line: uint32(insertLine + 1), Character: 0},
+				},
+				NewText: importLine + "\n",
+			}
+		}
+	} else if pm.frontmatterStart != -1 {
+		// No import block - create one at start of frontmatter
+		return &protocol.TextEdit{
+			Range: protocol.Range{
+				Start: protocol.Position{Line: uint32(pm.frontmatterStart), Character: 0},
+				End:   protocol.Position{Line: uint32(pm.frontmatterStart), Character: 0},
+			},
+			NewText: importLine + "\n\n",
+		}
+	}
+
+	return nil
 }
 
 // ScriptPositionMapper maps between .gxc script positions and virtual .go positions
