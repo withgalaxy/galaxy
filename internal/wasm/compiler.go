@@ -49,7 +49,9 @@ func (c *Compiler) Compile(script, pagePath string) (*CompiledModule, error) {
 	}
 	defer os.RemoveAll(buildDir)
 
-	preparedScript, err := prepareScript(script, hash, c.UseTinyGo && isTinyGoAvailable())
+	moduleID := filepath.Base(pagePath)
+	scriptWithHMR := injectHMRHelpers(script, moduleID)
+	preparedScript, err := prepareScript(scriptWithHMR, hash, c.UseTinyGo && isTinyGoAvailable())
 	if err != nil {
 		return nil, fmt.Errorf("prepare script: %w", err)
 	}
@@ -311,4 +313,70 @@ func indentCode(code string) string {
 func isTinyGoAvailable() bool {
 	_, err := exec.LookPath("tinygo")
 	return err == nil
+}
+
+func injectHMRHelpers(script, moduleID string) string {
+	var sb strings.Builder
+	
+	sb.WriteString("// HMR helpers (auto-injected)\n")
+	sb.WriteString(fmt.Sprintf("var __hmrModuleID = %q\n\n", moduleID))
+	
+	sb.WriteString("func hmrAccept(callback func()) {\n")
+	sb.WriteString("\tensureHMRGlobals()\n")
+	sb.WriteString("\thandlers := js.Global().Get(\"__galaxyWasmAcceptHandlers\")\n")
+	sb.WriteString("\tcb := js.FuncOf(func(this js.Value, args []js.Value) interface{} {\n")
+	sb.WriteString("\t\tcallback()\n")
+	sb.WriteString("\t\treturn nil\n")
+	sb.WriteString("\t})\n")
+	sb.WriteString("\thandlers.Set(__hmrModuleID, cb)\n")
+	sb.WriteString("}\n\n")
+	
+	sb.WriteString("func hmrOnDispose(handler func()) {\n")
+	sb.WriteString("\tensureHMRGlobals()\n")
+	sb.WriteString("\tmodules := js.Global().Get(\"__galaxyWasmModules\")\n")
+	sb.WriteString("\tmodule := modules.Get(__hmrModuleID)\n")
+	sb.WriteString("\tif !module.IsUndefined() {\n")
+	sb.WriteString("\t\tcb := js.FuncOf(func(this js.Value, args []js.Value) interface{} {\n")
+	sb.WriteString("\t\t\thandler()\n")
+	sb.WriteString("\t\t\treturn nil\n")
+	sb.WriteString("\t\t})\n")
+	sb.WriteString("\t\tmodule.Set(\"disposeHandler\", cb)\n")
+	sb.WriteString("\t}\n")
+	sb.WriteString("}\n\n")
+	
+	sb.WriteString("func hmrSaveState(key string, value interface{}) {\n")
+	sb.WriteString("\tensureHMRGlobals()\n")
+	sb.WriteString("\tstate := js.Global().Get(\"__galaxyWasmState\")\n")
+	sb.WriteString("\tmoduleState := state.Get(__hmrModuleID)\n")
+	sb.WriteString("\tif moduleState.IsUndefined() {\n")
+	sb.WriteString("\t\tmoduleState = js.Global().Get(\"Object\").New()\n")
+	sb.WriteString("\t\tstate.Set(__hmrModuleID, moduleState)\n")
+	sb.WriteString("\t}\n")
+	sb.WriteString("\tmoduleState.Set(key, js.ValueOf(value))\n")
+	sb.WriteString("}\n\n")
+	
+	sb.WriteString("func hmrLoadState(key string) js.Value {\n")
+	sb.WriteString("\tensureHMRGlobals()\n")
+	sb.WriteString("\tstate := js.Global().Get(\"__galaxyWasmState\")\n")
+	sb.WriteString("\tmoduleState := state.Get(__hmrModuleID)\n")
+	sb.WriteString("\tif moduleState.IsUndefined() {\n")
+	sb.WriteString("\t\treturn js.Undefined()\n")
+	sb.WriteString("\t}\n")
+	sb.WriteString("\treturn moduleState.Get(key)\n")
+	sb.WriteString("}\n\n")
+	
+	sb.WriteString("func ensureHMRGlobals() {\n")
+	sb.WriteString("\tif js.Global().Get(\"__galaxyWasmModules\").IsUndefined() {\n")
+	sb.WriteString("\t\tjs.Global().Set(\"__galaxyWasmModules\", js.Global().Get(\"Object\").New())\n")
+	sb.WriteString("\t}\n")
+	sb.WriteString("\tif js.Global().Get(\"__galaxyWasmAcceptHandlers\").IsUndefined() {\n")
+	sb.WriteString("\t\tjs.Global().Set(\"__galaxyWasmAcceptHandlers\", js.Global().Get(\"Object\").New())\n")
+	sb.WriteString("\t}\n")
+	sb.WriteString("\tif js.Global().Get(\"__galaxyWasmState\").IsUndefined() {\n")
+	sb.WriteString("\t\tjs.Global().Set(\"__galaxyWasmState\", js.Global().Get(\"Object\").New())\n")
+	sb.WriteString("\t}\n")
+	sb.WriteString("}\n\n")
+	
+	sb.WriteString(script)
+	return sb.String()
 }
