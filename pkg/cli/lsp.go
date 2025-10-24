@@ -86,6 +86,14 @@ func runLSP(cmd *cobra.Command, args []string) error {
 			result, err := server.Hover(ctx, &params)
 			return reply(ctx, result, err)
 
+		case "textDocument/definition":
+			var params protocol.DefinitionParams
+			if err := json.Unmarshal(req.Params(), &params); err != nil {
+				return reply(ctx, nil, err)
+			}
+			result, err := server.Definition(ctx, &params)
+			return reply(ctx, result, err)
+
 		case "shutdown":
 			return reply(ctx, nil, server.Shutdown(ctx))
 
