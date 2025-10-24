@@ -3,16 +3,21 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
+	"github.com/cameron-webmatter/galaxy/pkg/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
 
 type Server struct {
-	conn    jsonrpc2.Conn
-	cache   map[protocol.DocumentURI]*DocumentState
-	cacheMu sync.RWMutex
+	conn     jsonrpc2.Conn
+	cache    map[protocol.DocumentURI]*DocumentState
+	cacheMu  sync.RWMutex
+	project  *ProjectContext
+	rootPath string
+	gopls    *GoplsProxy
 }
 
 type DocumentState struct {
@@ -29,6 +34,25 @@ func NewServer(conn jsonrpc2.Conn) *Server {
 }
 
 func (s *Server) Initialize(ctx context.Context, params *protocol.InitializeParams) (*protocol.InitializeResult, error) {
+	// Extract root path
+	if params.RootURI != "" {
+		s.rootPath = string(params.RootURI)[7:] // Strip file://
+	} else if params.RootPath != "" {
+		s.rootPath = params.RootPath
+	}
+
+	// Load project context
+	if s.rootPath != "" {
+		if project, err := NewProjectContext(s.rootPath); err == nil {
+			s.project = project
+		}
+
+		// Initialize gopls proxy
+		if gopls, err := NewGoplsProxy(s.rootPath); err == nil {
+			s.gopls = gopls
+		}
+	}
+
 	return &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
 			TextDocumentSync: protocol.TextDocumentSyncOptions{
@@ -36,13 +60,13 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 				Change:    protocol.TextDocumentSyncKindFull,
 			},
 			CompletionProvider: &protocol.CompletionOptions{
-				TriggerCharacters: []string{"{", ":", " "},
+				TriggerCharacters: []string{"{", ":", " ", "."},
 			},
 			HoverProvider: true,
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "gxc-language-server",
-			Version: "0.2.1",
+			Version: "0.2.2",
 		},
 	}, nil
 }
@@ -119,14 +143,33 @@ func (s *Server) publishDiagnostics(ctx context.Context, uri protocol.DocumentUR
 }
 
 func (s *Server) Completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
+	// Write to stderr so it shows up in logs
+	fmt.Fprintf(os.Stderr, "=== COMPLETION REQUEST === URI=%s Line=%d Char=%d\n", params.TextDocument.URI, params.Position.Line, params.Position.Character)
+
 	s.cacheMu.RLock()
 	state, ok := s.cache[params.TextDocument.URI]
 	s.cacheMu.RUnlock()
 
 	if !ok {
+		fmt.Fprintf(os.Stderr, "=== NO CACHED STATE ===\n")
 		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
 	}
 
+	// Check if in frontmatter - delegate to gopls
+	if s.gopls != nil && IsInFrontmatter(params.Position, state.Content) {
+		fmt.Fprintf(os.Stderr, "=== IN FRONTMATTER - DELEGATING TO GOPLS ===\n")
+		return s.getGoplsCompletion(ctx, params.TextDocument.URI, state.Content, params.Position)
+	}
+
+	// Check if in script tag - delegate to gopls
+	if s.gopls != nil && IsInScript(params.Position, state.Content) {
+		fmt.Fprintf(os.Stderr, "=== IN SCRIPT TAG - DELEGATING TO GOPLS ===\n")
+		return s.getGoplsScriptCompletion(ctx, params.TextDocument.URI, state.Content, params.Position)
+	}
+
+	fmt.Fprintf(os.Stderr, "=== IN TEMPLATE - USING GXC COMPLETIONS (gopls=%v) ===\n", s.gopls != nil)
+
+	// Otherwise use gxc template logic
 	items := s.getCompletions(state.Content, params.Position)
 
 	return &protocol.CompletionList{
@@ -144,6 +187,136 @@ func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (*prot
 		return nil, nil
 	}
 
+	// Check if in frontmatter - delegate to gopls
+	if s.gopls != nil && IsInFrontmatter(params.Position, state.Content) {
+		return s.getGoplsHover(ctx, params.TextDocument.URI, state.Content, params.Position)
+	}
+
+	// Otherwise use gxc logic
 	hover := s.getHover(state.Content, params.Position)
 	return hover, nil
+}
+
+func (s *Server) getGoplsCompletion(ctx context.Context, uri protocol.DocumentURI, content string, pos protocol.Position) (*protocol.CompletionList, error) {
+	fmt.Fprintf(os.Stderr, "=== getGoplsCompletion START: uri=%s, pos=%d:%d\n", uri, pos.Line, pos.Character)
+
+	// Parse content to extract frontmatter
+	comp, err := parser.Parse(content)
+	if err != nil || comp.Frontmatter == "" {
+		fmt.Fprintf(os.Stderr, "=== Parse error or empty frontmatter: %v\n", err)
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Frontmatter length: %d\n", len(comp.Frontmatter))
+
+	// Create virtual Go file
+	goPath, err := s.gopls.CreateVirtualGoFile(string(uri), comp.Frontmatter)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "=== CreateVirtualGoFile error: %v\n", err)
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Created virtual file: %s\n", goPath)
+
+	// Map position
+	pm := NewPositionMapper(content)
+	goLine, goChar := pm.GxcToGo(int(pos.Line), int(pos.Character))
+
+	fmt.Fprintf(os.Stderr, "=== Mapped position %d:%d -> %d:%d\n", pos.Line, pos.Character, goLine, goChar)
+
+	// Request completion from gopls
+	result, err := s.gopls.Completion(ctx, goPath, goLine, goChar)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "=== Gopls completion error: %v\n", err)
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Gopls returned %d completions\n", len(result.Items))
+
+	// Log first few completions for debugging
+	for i := 0; i < len(result.Items) && i < 5; i++ {
+		fmt.Fprintf(os.Stderr, "===   [%d] %s (kind=%v)\n", i, result.Items[i].Label, result.Items[i].Kind)
+	}
+
+	// CRITICAL: Transform all completion item positions from .go back to .gxc
+	// Without this, TextEdit ranges will reference wrong line numbers
+	for i := range result.Items {
+		result.Items[i] = pm.TransformCompletionItem(result.Items[i])
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Transformed completion positions from .go to .gxc\n")
+
+	return result, nil
+}
+
+func (s *Server) getGoplsHover(ctx context.Context, uri protocol.DocumentURI, content string, pos protocol.Position) (*protocol.Hover, error) {
+	// Parse content to extract frontmatter
+	comp, err := parser.Parse(content)
+	if err != nil || comp.Frontmatter == "" {
+		return nil, nil
+	}
+
+	// Create virtual Go file
+	goPath, err := s.gopls.CreateVirtualGoFile(string(uri), comp.Frontmatter)
+	if err != nil {
+		return nil, nil
+	}
+
+	// Map position
+	pm := NewPositionMapper(content)
+	goLine, goChar := pm.GxcToGo(int(pos.Line), int(pos.Character))
+
+	// Request hover from gopls
+	return s.gopls.Hover(ctx, goPath, goLine, goChar)
+}
+
+func (s *Server) getGoplsScriptCompletion(ctx context.Context, uri protocol.DocumentURI, content string, pos protocol.Position) (*protocol.CompletionList, error) {
+	fmt.Fprintf(os.Stderr, "=== getGoplsScriptCompletion START: uri=%s, pos=%d:%d\n", uri, pos.Line, pos.Character)
+
+	// Find script at cursor position
+	scriptContent, scriptStart, _, found := FindScriptAtPosition(content, pos)
+	if !found {
+		fmt.Fprintf(os.Stderr, "=== No script found at position\n")
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Script content length: %d, starts at line %d\n", len(scriptContent), scriptStart)
+
+	// Create virtual Go file from script
+	goPath, err := s.gopls.CreateVirtualGoFileFromScript(string(uri), scriptContent)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "=== CreateVirtualGoFileFromScript error: %v\n", err)
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Created virtual script file: %s\n", goPath)
+
+	// Map position
+	spm := NewScriptPositionMapper(scriptContent, scriptStart)
+	goLine, goChar := spm.GxcToGo(int(pos.Line), int(pos.Character))
+
+	fmt.Fprintf(os.Stderr, "=== Mapped script position %d:%d -> %d:%d\n", pos.Line, pos.Character, goLine, goChar)
+
+	// Request completion from gopls
+	result, err := s.gopls.Completion(ctx, goPath, goLine, goChar)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "=== Gopls script completion error: %v\n", err)
+		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Gopls returned %d script completions\n", len(result.Items))
+
+	// Log first few completions for debugging
+	for i := 0; i < len(result.Items) && i < 5; i++ {
+		fmt.Fprintf(os.Stderr, "===   [%d] %s (kind=%v)\n", i, result.Items[i].Label, result.Items[i].Kind)
+	}
+
+	// Transform all completion item positions from .go back to .gxc
+	for i := range result.Items {
+		result.Items[i] = spm.TransformCompletionItem(result.Items[i])
+	}
+
+	fmt.Fprintf(os.Stderr, "=== Transformed script completion positions from .go to .gxc\n")
+
+	return result, nil
 }
