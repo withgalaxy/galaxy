@@ -62,7 +62,8 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 			CompletionProvider: &protocol.CompletionOptions{
 				TriggerCharacters: []string{"{", ":", " ", "."},
 			},
-			HoverProvider: true,
+			HoverProvider:      true,
+			DefinitionProvider: true,
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "gxc-language-server",
@@ -319,4 +320,34 @@ func (s *Server) getGoplsScriptCompletion(ctx context.Context, uri protocol.Docu
 	fmt.Fprintf(os.Stderr, "=== Transformed script completion positions from .go to .gxc\n")
 
 	return result, nil
+}
+
+func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionParams) ([]protocol.Location, error) {
+	s.cacheMu.RLock()
+	state, ok := s.cache[params.TextDocument.URI]
+	s.cacheMu.RUnlock()
+
+	if !ok {
+		return nil, nil
+	}
+
+	componentName := getComponentAtPosition(state.Content, params.Position)
+	if componentName == "" {
+		return nil, nil
+	}
+
+	componentPath := findComponentFile(s.rootPath, componentName)
+	if componentPath == "" {
+		return nil, nil
+	}
+
+	return []protocol.Location{
+		{
+			URI: protocol.DocumentURI("file://" + componentPath),
+			Range: protocol.Range{
+				Start: protocol.Position{Line: 0, Character: 0},
+				End:   protocol.Position{Line: 0, Character: 0},
+			},
+		},
+	}, nil
 }
