@@ -18,3 +18,14 @@ type Message struct {
 	Hash     string                 `json:"hash,omitempty"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
+
+func (s *Server) BroadcastWasmReload(path, hash, moduleId string) {
+	s.broadcast <- Message{
+		Type: MsgTypeWasmReload,
+		Path: path,
+		Hash: hash,
+		Metadata: map[string]interface{}{
+			"moduleId": moduleId,
+		},
+	}
+}

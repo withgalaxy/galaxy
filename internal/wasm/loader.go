@@ -8,46 +8,67 @@ func GenerateLoader(wasmPath string) string {
 	return fmt.Sprintf(`
 (function() {
 	const wasmPath = "%s";
-	const wasmKey = wasmPath.replace(/\//g, '_');
+	const moduleId = wasmPath.replace(/[^a-zA-Z0-9]/g, '_');
 	
 	window.__galaxyWasmModules = window.__galaxyWasmModules || {};
+	window.__galaxyWasmAcceptHandlers = window.__galaxyWasmAcceptHandlers || {};
+	window.__galaxyWasmState = window.__galaxyWasmState || {};
 	
-	async function loadWasmModule() {
-		if (window.__galaxyWasmModules[wasmKey]) {
-			console.log('[WASM] Module already loaded:', wasmKey);
-			return;
+	window.loadWasmModule = async function(modId, path, hash, isHotUpdate = false) {
+		const oldModule = window.__galaxyWasmModules[modId];
+		
+		if (isHotUpdate && oldModule) {
+			console.log('[WASM HMR] Disposing old module:', modId);
+			
+			if (oldModule.disposeHandler) {
+				try {
+					await oldModule.disposeHandler();
+				} catch (e) {
+					console.warn('[WASM HMR] Dispose failed:', e);
+				}
+			}
+			
+			if (oldModule.listeners) {
+				oldModule.listeners.forEach(({ el, event, handler }) => {
+					try {
+						el.removeEventListener(event, handler);
+					} catch (e) {
+						console.warn('[WASM HMR] Listener cleanup failed:', e);
+					}
+				});
+			}
 		}
-
+		
 		try {
 			const go = new Go();
+			const cacheBuster = hash || Date.now();
 			const result = await WebAssembly.instantiateStreaming(
-				fetch(wasmPath + '?t=' + Date.now()), 
+				fetch(path + '?t=' + cacheBuster),
 				go.importObject
 			);
 			
-			go.run(result.instance);
-			
-			window.__galaxyWasmModules[wasmKey] = {
+			window.__galaxyWasmModules[modId] = {
 				instance: result.instance,
 				go: go,
-				cleanup: function() {
-					if (window.galaxyWasmCleanup) {
-						try {
-							window.galaxyWasmCleanup();
-						} catch(e) {
-							console.warn('[WASM] Cleanup failed:', e);
-						}
-					}
-				}
+				listeners: [],
+				disposeHandler: null
 			};
 			
-			console.log('[WASM] Module loaded:', wasmKey);
+			go.run(result.instance);
+			
+			if (isHotUpdate && window.__galaxyWasmAcceptHandlers[modId]) {
+				console.log('[WASM HMR] Calling accept handler for:', modId);
+				await window.__galaxyWasmAcceptHandlers[modId]();
+			}
+			
+			console.log('[WASM] Module loaded:', modId);
 		} catch (err) {
 			console.error('[WASM] Failed to load module:', err);
+			throw err;
 		}
-	}
+	};
 	
-	loadWasmModule();
+	loadWasmModule(moduleId, wasmPath, null, false);
 })();
 `, wasmPath)
 }

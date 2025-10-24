@@ -5,8 +5,24 @@
 
   class GalaxyHMR {
     constructor() {
+      this.morphdom = null;
+      this.loadMorph();
       this.connect();
       this.restoreState();
+    }
+
+    async loadMorph() {
+      try {
+        const script = document.createElement('script');
+        script.src = '/__hmr/morph.js';
+        script.onload = () => {
+          this.morphdom = window.morphdom || morphdom;
+          console.log('[HMR] Morphdom loaded');
+        };
+        document.head.appendChild(script);
+      } catch (e) {
+        console.warn('[HMR] Failed to load morphdom:', e);
+      }
     }
 
     connect() {
@@ -36,7 +52,7 @@
       };
     }
 
-    handleMessage(msg) {
+    async handleMessage(msg) {
       console.log('[HMR] Received:', msg.type);
       
       switch(msg.type) {
@@ -55,22 +71,57 @@
           break;
         
         case 'wasm-reload':
-          console.log('[HMR] WASM changed, reloading...');
-          window.location.reload();
+          await this.handleWasmReload(msg);
           break;
         
         case 'template-update':
-          const state = {
-            scroll: { x: window.scrollX, y: window.scrollY },
-            forms: this.captureFormState()
-          };
-          console.log('[HMR] Template changed, reloading with state preservation...');
-          sessionStorage.setItem('__hmr_state', JSON.stringify(state));
-          window.location.reload();
+          await this.handleTemplateUpdate(msg);
           break;
         
         default:
           console.warn('[HMR] Unknown message type:', msg.type);
+      }
+    }
+
+    async handleTemplateUpdate(msg) {
+      if (!this.morphdom) {
+        console.log('[HMR] Morphdom not ready, reloading...');
+        this.saveState();
+        window.location.reload();
+        return;
+      }
+
+      try {
+        console.log('[HMR] Fetching updated template...');
+        const response = await fetch(`/__hmr/render?path=${encodeURIComponent(msg.path)}`);
+        const data = await response.json();
+        
+        const container = document.querySelector('main') || document.body;
+        this.morphdom(container, `<main>${data.html}</main>`);
+        
+        console.log('[HMR] Template updated without reload ✨');
+      } catch (e) {
+        console.error('[HMR] Template update failed:', e);
+        this.saveState();
+        window.location.reload();
+      }
+    }
+
+    async handleWasmReload(msg) {
+      const moduleId = msg.moduleId || msg.path;
+      
+      if (window.__galaxyWasmAcceptHandlers && window.__galaxyWasmAcceptHandlers[moduleId]) {
+        console.log('[WASM HMR] Hot reloading module:', moduleId);
+        try {
+          await window.loadWasmModule(moduleId, msg.path, msg.hash, true);
+          console.log('[WASM HMR] Module reloaded ✨');
+        } catch (e) {
+          console.error('[WASM HMR] Reload failed:', e);
+          window.location.reload();
+        }
+      } else {
+        console.log('[WASM HMR] Module cannot hot reload, full reload');
+        window.location.reload();
       }
     }
 
@@ -89,6 +140,14 @@
       
       styleEl.textContent = css;
       console.log('[HMR] Styles updated without reload ✨');
+    }
+
+    saveState() {
+      const state = {
+        scroll: { x: window.scrollX, y: window.scrollY },
+        forms: this.captureFormState()
+      };
+      sessionStorage.setItem('__hmr_state', JSON.stringify(state));
     }
 
     captureFormState() {

@@ -94,13 +94,6 @@ func (s *Server) BroadcastScriptReload(path string) {
 	}
 }
 
-func (s *Server) BroadcastWasmReload(path, hash string) {
-	s.broadcast <- Message{
-		Type: MsgTypeWasmReload,
-		Path: path,
-		Hash: hash,
-	}
-}
 
 func (m Message) MarshalJSON() ([]byte, error) {
 	type Alias Message

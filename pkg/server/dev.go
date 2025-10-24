@@ -25,6 +25,8 @@ import (
 	"github.com/cameron-webmatter/galaxy/pkg/router"
 	"github.com/cameron-webmatter/galaxy/pkg/ssr"
 	"github.com/cameron-webmatter/galaxy/pkg/template"
+	"encoding/json"
+
 	"github.com/cameron-webmatter/galaxy/pkg/hmr"
 
 )
@@ -652,6 +654,91 @@ func getHMRClientPath() string {
 		"../galaxy/pkg/hmr/client.js",
 		"../../galaxy/pkg/hmr/client.js",
 		"../../../galaxy/pkg/hmr/client.js",
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func (s *DevServer) handleHMRRender(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	route, _ := s.Router.Match(r.URL.Path)
+	if route == nil {
+		route = &router.Route{FilePath: path}
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	comp, err := parser.Parse(string(content))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resolver := s.Compiler.Resolver
+	resolver.SetCurrentFile(path)
+
+	imports := make([]compiler.Import, len(comp.Imports))
+	for i, imp := range comp.Imports {
+		imports[i] = compiler.Import{
+			Path:        imp.Path,
+			Alias:       imp.Alias,
+			IsComponent: imp.IsComponent,
+		}
+	}
+	resolver.ParseImports(imports)
+
+	ctx := executor.NewContext()
+	if comp.Frontmatter != "" {
+		ctx.Execute(comp.Frontmatter)
+	}
+
+	s.Compiler.CollectedStyles = nil
+	processedTemplate := s.Compiler.ProcessComponentTags(comp.Template, ctx)
+
+	engine := template.NewEngine(ctx)
+	rendered, err := engine.Render(processedTemplate, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"html": rendered,
+		"path": path,
+	})
+}
+
+func (s *DevServer) serveHMRMorph(w http.ResponseWriter, r *http.Request) {
+	morphJS, err := os.ReadFile(getHMRMorphPath())
+	if err != nil {
+		http.Error(w, "morph.js not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Write(morphJS)
+}
+
+func getHMRMorphPath() string {
+	paths := []string{
+		"/Users/cameron/dev/galaxy-mono/galaxy/pkg/hmr/morph.js",
+		"pkg/hmr/morph.js",
+		"../galaxy/pkg/hmr/morph.js",
+		"../../galaxy/pkg/hmr/morph.js",
+		"../../../galaxy/pkg/hmr/morph.js",
 	}
 	for _, p := range paths {
 		if _, err := os.Stat(p); err == nil {

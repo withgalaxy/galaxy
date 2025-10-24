@@ -125,7 +125,7 @@ if filepath.Ext(event.Name) == ".gxc" && isUnderDir(event.Name, srcDir) {
 					}
 				}
 			} else if diff.NeedsFullReload() {
-				srv.HMRServer.BroadcastReload()
+				srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
 			} else if diff.TemplateChanged {
 				srv.HMRServer.BroadcastTemplateUpdate(event.Name)
 			}
@@ -145,7 +145,7 @@ if filepath.Ext(event.Name) == ".gxc" && isUnderDir(event.Name, srcDir) {
 						if err := srv.ReloadMiddleware(); err != nil && !silent {
 
 						if srv.HMRServer != nil {
-							srv.HMRServer.BroadcastReload()
+							srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
 						}
 
 							fmt.Printf("⚠ Middleware reload failed: %v\n", err)
