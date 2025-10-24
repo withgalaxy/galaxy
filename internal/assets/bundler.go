@@ -13,6 +13,7 @@ import (
 )
 
 type Bundler struct {
+	DevMode       bool
 	OutDir        string
 	PluginManager *plugins.Manager
 	WasmCompiler  *wasm.Compiler
@@ -208,6 +209,10 @@ func (b *Bundler) InjectAssetsWithWasm(html, cssPath, jsPath, scopeID string, wa
 		html = strings.Replace(html, "<body>", fmt.Sprintf(`<body %s>`, bodyScopeAttr), 1)
 	}
 
+	if b.DevMode {
+		hmrScript := `<script src="/__hmr/client.js"></script>`
+		html = strings.Replace(html, "</head>", hmrScript+"\n</head>", 1)
+	}
 	if cssPath != "" {
 		cssTag := fmt.Sprintf(`<link rel="stylesheet" href="%s">`, cssPath)
 		html = strings.Replace(html, "</head>", cssTag+"\n</head>", 1)

@@ -25,6 +25,8 @@ import (
 	"github.com/cameron-webmatter/galaxy/pkg/router"
 	"github.com/cameron-webmatter/galaxy/pkg/ssr"
 	"github.com/cameron-webmatter/galaxy/pkg/template"
+	"github.com/cameron-webmatter/galaxy/pkg/hmr"
+
 )
 
 type DevServer struct {
@@ -47,6 +49,10 @@ type DevServer struct {
 	PluginCompiler     *PluginCompiler
 	compileMu          sync.Mutex
 	codegenServerCmd   *exec.Cmd
+	HMRServer          *hmr.Server
+	ChangeTracker      *hmr.ChangeTracker
+
+
 	codegenServerPort  int
 	codegenReady       bool
 }
@@ -77,10 +83,17 @@ func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *
 		EndpointCompiler:   endpoints.NewCompiler(rootDir, ".galaxy/endpoints"),
 		MiddlewareCompiler: middleware.NewCompiler(rootDir, ".galaxy/middleware"),
 		Verbose:            verbose,
+
 		UseCodegen:         useCodegen,
 		PageCache:          NewPageCache(),
 		PluginCompiler:     NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
+
 	}
+
+	srv.ChangeTracker = hmr.NewChangeTracker()
+
+	srv.Bundler.DevMode = true
+
 
 	return srv
 }
@@ -103,6 +116,12 @@ func (s *DevServer) Start() error {
 			return fmt.Errorf("start codegen server: %w", err)
 		}
 	}
+
+
+	s.HMRServer = hmr.NewServer()
+	s.HMRServer.Start()
+	http.HandleFunc("/__hmr", s.HMRServer.HandleWebSocket)
+	http.HandleFunc("/__hmr/client.js", s.serveHMRClient)
 
 	http.HandleFunc("/", s.logRequest(s.handleRequest))
 
@@ -614,4 +633,30 @@ func (s *DevServer) handlePageWithCodegen(route *router.Route, mwCtx *middleware
 	// Write final output to original writer
 	originalWriter.Header().Set("Content-Type", "text/html; charset=utf-8")
 	originalWriter.Write([]byte(rendered))
+}
+
+func (s *DevServer) serveHMRClient(w http.ResponseWriter, r *http.Request) {
+	clientJS, err := os.ReadFile(getHMRClientPath())
+	if err != nil {
+		http.Error(w, "HMR client not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Write(clientJS)
+}
+
+func getHMRClientPath() string {
+	paths := []string{
+		"/Users/cameron/dev/galaxy-mono/galaxy/pkg/hmr/client.js",
+		"pkg/hmr/client.js",
+		"../galaxy/pkg/hmr/client.js",
+		"../../galaxy/pkg/hmr/client.js",
+		"../../../galaxy/pkg/hmr/client.js",
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
