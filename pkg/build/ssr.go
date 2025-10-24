@@ -120,7 +120,7 @@ func (b *SSRBuilder) generateServerCode(serverDir string) error {
 		moduleName = "generated-server"
 	}
 
-	codegenBuilder := codegen.NewCodegenBuilder(b.Router.Routes, b.PagesDir, b.OutDir, moduleName)
+	codegenBuilder := codegen.NewCodegenBuilder(b.Router.Routes, b.PagesDir, b.OutDir, moduleName, b.PublicDir)
 	return codegenBuilder.Build()
 }
 

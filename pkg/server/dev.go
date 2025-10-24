@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cameron-webmatter/galaxy/internal/assets"
+	"github.com/cameron-webmatter/galaxy/pkg/codegen"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
 	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
 	"github.com/cameron-webmatter/galaxy/pkg/executor"
@@ -43,12 +46,15 @@ type DevServer struct {
 	PageCache          *PageCache
 	PluginCompiler     *PluginCompiler
 	compileMu          sync.Mutex
+	codegenServerCmd   *exec.Cmd
+	codegenServerPort  int
+	codegenReady       bool
 }
 
 func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *DevServer {
 	srcDir := filepath.Dir(pagesDir)
 
-	useCodegen := os.Getenv("GALAXY_USE_CODEGEN") == "true"
+	useCodegen := os.Getenv("GALAXY_USE_CODEGEN") != "false"
 
 	galaxyPath := "../../../galaxy"
 	if gp := os.Getenv("GALAXY_PATH"); gp != "" {
@@ -76,27 +82,6 @@ func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *
 		PluginCompiler:     NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
 	}
 
-	middlewarePath := filepath.Join(srcDir, "middleware.go")
-	if _, err := os.Stat(middlewarePath); err == nil {
-		loaded, err := srv.MiddlewareCompiler.Load(middlewarePath)
-		if err != nil {
-			fmt.Printf("⚠ Middleware compile failed: %v\n", err)
-		} else {
-			srv.LoadedMiddleware = loaded
-			srv.MiddlewareChain = middleware.NewChain()
-
-			if loaded.Sequence != nil && len(loaded.Sequence) > 0 {
-				for _, mw := range loaded.Sequence {
-					srv.MiddlewareChain.Use(mw)
-				}
-			} else if loaded.OnRequest != nil {
-				srv.MiddlewareChain.Use(loaded.OnRequest)
-			}
-
-			srv.HasMiddleware = true
-		}
-	}
-
 	return srv
 }
 
@@ -109,6 +94,13 @@ func (s *DevServer) Start() error {
 	if s.Lifecycle != nil {
 		if err := s.Lifecycle.ExecuteStartup(); err != nil {
 			return fmt.Errorf("lifecycle startup: %w", err)
+		}
+	}
+
+	// If codegen mode is enabled, build and start the codegen server
+	if s.UseCodegen {
+		if err := s.buildAndStartCodegenServer(); err != nil {
+			return fmt.Errorf("start codegen server: %w", err)
 		}
 	}
 
@@ -214,6 +206,12 @@ func getStatusColor(status int) string {
 }
 
 func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
+	// If codegen server is ready, proxy all requests to it
+	if s.UseCodegen && s.codegenReady {
+		s.proxyToCodegenServer(w, r)
+		return
+	}
+
 	if r.URL.Path == "/wasm_exec.js" {
 		s.serveWasmExec(w, r)
 		return
@@ -245,11 +243,6 @@ func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-		return
-	}
-
-	if route.IsEndpoint {
-		s.handleEndpoint(route, mwCtx, params)
 		return
 	}
 
@@ -427,6 +420,76 @@ func (s *DevServer) serveWasmExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, wasmExecPath)
+}
+
+func (s *DevServer) buildAndStartCodegenServer() error {
+	fmt.Println("🔨 Building codegen server...")
+
+	// Use a different port for the codegen server
+	s.codegenServerPort = s.Port + 1000
+
+	// Build the server using CodegenBuilder
+	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, "dist", "dev-server", s.PublicDir)
+	if err := builder.Build(); err != nil {
+		return fmt.Errorf("codegen build failed: %w", err)
+	}
+
+	fmt.Println("✅ Codegen server built successfully")
+	fmt.Println("🚀 Starting codegen server...")
+
+	// Start the compiled server from dist/server directory
+	// so it can find _assets, wasm_exec.js, etc.
+	serverBinary := "./server"
+	cmd := exec.Command(serverBinary)
+	cmd.Dir = filepath.Join(s.RootDir, "dist", "server")
+
+	// Load .env and pass to codegen server
+	envVars := os.Environ()
+	envVars = append(envVars, fmt.Sprintf("PORT=%d", s.codegenServerPort))
+
+	envPath := filepath.Join(s.RootDir, ".env")
+	if data, err := os.ReadFile(envPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") && strings.Contains(line, "=") {
+				envVars = append(envVars, line)
+			}
+		}
+	}
+
+	cmd.Env = envVars
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start codegen server: %w", err)
+	}
+
+	s.codegenServerCmd = cmd
+
+	// Wait for server to be ready
+	serverURL := fmt.Sprintf("http://localhost:%d", s.codegenServerPort)
+	for i := 0; i < 50; i++ {
+		resp, err := http.Get(serverURL + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode < 500 {
+				s.codegenReady = true
+				fmt.Printf("✅ Codegen server ready on port %d\n", s.codegenServerPort)
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("codegen server did not become ready")
+}
+
+func (s *DevServer) proxyToCodegenServer(w http.ResponseWriter, r *http.Request) {
+	target, _ := url.Parse(fmt.Sprintf("http://localhost:%d", s.codegenServerPort))
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ServeHTTP(w, r)
 }
 
 func (s *DevServer) handlePageWithCodegen(route *router.Route, mwCtx *middleware.Context, params map[string]string) {

@@ -131,6 +131,10 @@ func (g *HandlerGenerator) generateHandlerFunc(funcName, frontmatterCode string,
 		http.Error(w, fmt.Sprintf("Template render error: %%v", err), http.StatusInternalServerError)
 		return
 	}
+	
+	// Inject WASM assets if present
+	html = runtime.InjectWasmAssets(html, r.URL.Path)
+	
 	w.Write([]byte(html))
 }
 

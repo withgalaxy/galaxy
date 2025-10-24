@@ -19,8 +19,11 @@ func NewMainGenerator(handlers []*GeneratedHandler, routes []*router.Route, modu
 
 func (g *MainGenerator) Generate() string {
 	imports := g.collectImports()
+	endpointImports := g.collectEndpointImports()
 	routeRegistrations := g.generateRouteRegistrations()
+	endpointRoutes := g.generateEndpointRoutes()
 	handlerFunctions := g.generateHandlerFunctions()
+	endpointHandlers := g.generateEndpointHandlers()
 	helpers := g.generateHelpers()
 
 	regexpImport := ""
@@ -31,15 +34,27 @@ func (g *MainGenerator) Generate() string {
 		}
 	}
 
+	middlewareImport := ""
+	if g.HasMiddleware {
+		middlewareImport = `
+	"github.com/cameron-webmatter/galaxy/pkg/middleware"`
+	}
+
 	return fmt.Sprintf(`package main
 
 import (
-	"net/http"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 	%s
 	"strings"
-	%s
+	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/cameron-webmatter/galaxy/pkg/template"%s
 	"%s/runtime"
+	%s
+	%s
 )
 
 func main() {
@@ -50,10 +65,19 @@ func main() {
 	http.Handle("/wasm_exec.js", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "wasm_exec.js")
 	}))
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 	
 	%s
+	%s
 	
-	addr := ":4322"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "4322"
+	}
+	addr := ":" + port
 	log.Printf("🚀 Server running at http://localhost%%s\n", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
@@ -63,11 +87,25 @@ func main() {
 %s
 
 %s
-`, regexpImport, imports, g.ModuleName, g.generateMiddlewareSetup(), routeRegistrations, helpers, handlerFunctions)
+
+%s
+`, regexpImport, middlewareImport, g.ModuleName, imports, endpointImports, g.generateMiddlewareSetup(), endpointRoutes, routeRegistrations, helpers, handlerFunctions, endpointHandlers)
 }
 
 func (g *MainGenerator) generateHelpers() string {
-	helpers := `func extractParams(path, pattern string) map[string]string {
+	helpers := `func tryServeStatic(w http.ResponseWriter, r *http.Request) bool {
+	// Check if this looks like a static file (has extension)
+	if filepath.Ext(r.URL.Path) != "" {
+		publicPath := filepath.Join("public", r.URL.Path)
+		if _, err := os.Stat(publicPath); err == nil {
+			http.ServeFile(w, r, publicPath)
+			return true
+		}
+	}
+	return false
+}
+
+func extractParams(path, pattern string) map[string]string {
 	params := make(map[string]string)
 	
 	pathParts := strings.Split(strings.Trim(path, "/"), "/")
@@ -206,7 +244,7 @@ func (g *MainGenerator) generateRouteRegistrations() string {
 		}
 		checks = append(checks, dynamicRoutes...)
 
-		all = append(all, fmt.Sprintf("\thttp.HandleFunc(\"/\", func(w http.ResponseWriter, r *http.Request) {\n%s\n\t\thttp.NotFound(w, r)\n\t})",
+		all = append(all, fmt.Sprintf("\thttp.HandleFunc(\"/\", func(w http.ResponseWriter, r *http.Request) {\n\t\t// Try serving static file first\n\t\tif tryServeStatic(w, r) {\n\t\t\treturn\n\t\t}\n%s\n\t\thttp.NotFound(w, r)\n\t})",
 			strings.Join(checks, "\n")))
 	}
 
@@ -235,6 +273,19 @@ func (g *MainGenerator) generateMiddlewareSetup() string {
 	}
 
 	return `chain := NewMiddlewareChain()
+	for _, mw := range Sequence() {
+		chain.Use(func(w http.ResponseWriter, r *http.Request, locals map[string]interface{}, next func()) {
+			ctx := &middleware.Context{
+				Request:  r,
+				Response: w,
+				Locals:   locals,
+			}
+			mw(ctx, func() error {
+				next()
+				return nil
+			})
+		})
+	}
 	`
 }
 

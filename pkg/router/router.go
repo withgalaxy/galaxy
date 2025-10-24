@@ -55,6 +55,14 @@ func (r *Router) createRoute(relPath, fullPath string) *Route {
 	pattern = strings.TrimSuffix(pattern, ".gxc")
 	pattern = strings.TrimSuffix(pattern, ".go")
 
+	// Strip HTTP method suffixes for endpoints
+	for _, method := range []string{"/GET", "/POST", "/PUT", "/DELETE", "/PATCH"} {
+		if strings.HasSuffix(pattern, method) {
+			pattern = strings.TrimSuffix(pattern, method)
+			break
+		}
+	}
+
 	if strings.HasSuffix(pattern, "/route") {
 		pattern = strings.TrimSuffix(pattern, "/route")
 	}

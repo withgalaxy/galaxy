@@ -153,8 +153,15 @@ func parseImports(frontmatter string) []Import {
 }
 
 func detectLanguage(content string) string {
+	// Strong indicators for Go WASM
+	if strings.Contains(content, "wasmdom.") ||
+		strings.Contains(content, "github.com/cameron-webmatter/galaxy/pkg/wasmdom") ||
+		strings.Contains(content, ":=") {
+		return "go"
+	}
+
 	jsPatterns := []string{"import ", "export ", "const ", "let ", "console.log", "=>"}
-	goPatterns := []string{"wasmdom.", ":=", "func ", "package "}
+	goPatterns := []string{"func ", "package "}
 
 	jsScore := 0
 	goScore := 0

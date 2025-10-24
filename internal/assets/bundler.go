@@ -24,7 +24,7 @@ type WasmAsset struct {
 }
 
 func NewBundler(outDir string) *Bundler {
-	compiler := wasm.NewCompiler(filepath.Join(outDir, ".galaxy", "wasm-build"), filepath.Join(outDir, "_assets", "wasm"))
+	compiler := wasm.NewCompiler(filepath.Join(".galaxy", "wasm-build"), filepath.Join(outDir, "_assets", "wasm"))
 	compiler.UseTinyGo = false
 	return &Bundler{
 		OutDir:       outDir,

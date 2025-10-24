@@ -19,8 +19,16 @@ type GeneratedHandler struct {
 	Code         string
 }
 
+type EndpointHandler struct {
+	Route       *router.Route
+	Methods     []string
+	PackageName string
+	ImportPath  string
+}
+
 type MainGenerator struct {
 	Handlers      []*GeneratedHandler
+	Endpoints     []*EndpointHandler
 	Routes        []*router.Route
 	ModuleName    string
 	ManifestPath  string

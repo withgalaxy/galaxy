@@ -128,6 +128,6 @@ func (b *HybridBuilder) generateServerForDynamicRoutes(serverDir string, routes 
 		moduleName = "generated-hybrid"
 	}
 
-	codegenBuilder := codegen.NewCodegenBuilder(routes, b.PagesDir, b.OutDir, moduleName)
+	codegenBuilder := codegen.NewCodegenBuilder(routes, b.PagesDir, b.OutDir, moduleName, b.PublicDir)
 	return codegenBuilder.Build()
 }
