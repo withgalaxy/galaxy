@@ -33,8 +33,9 @@ type GoplsProxy struct {
 
 // NewGoplsProxy spawns gopls and initializes it
 func NewGoplsProxy(rootDir string) (*GoplsProxy, error) {
-	// Create temp directory for virtual Go files
-	tempDir := filepath.Join(os.TempDir(), "gxc-gopls")
+	// Create temp directory for virtual Go files in the project root
+	// This ensures gopls can resolve module imports
+	tempDir := filepath.Join(rootDir, ".gxc-cache")
 	os.MkdirAll(tempDir, 0755)
 
 	cmd := exec.Command("gopls", "-mode=stdio")
@@ -105,6 +106,17 @@ func (gp *GoplsProxy) initialize() error {
 
 	// Send initialized notification
 	if err := gp.notify("initialized", map[string]interface{}{}); err != nil {
+		return err
+	}
+
+	// Configure gopls to ensure it indexes the workspace
+	if err := gp.notify("workspace/didChangeConfiguration", map[string]interface{}{
+		"settings": map[string]interface{}{
+			"gopls": map[string]interface{}{
+				"buildFlags": []string{},
+			},
+		},
+	}); err != nil {
 		return err
 	}
 
@@ -219,7 +231,7 @@ func (gp *GoplsProxy) Close() error {
 	if gp.cmd != nil && gp.cmd.Process != nil {
 		gp.cmd.Process.Kill()
 	}
-	os.RemoveAll(gp.tempDir)
+	// Don't remove tempDir - keep cache for performance
 	return nil
 }
 
@@ -241,7 +253,10 @@ func (gp *GoplsProxy) CreateVirtualGoFile(uri string, frontmatter string) (strin
 	}
 
 	buf.WriteString("func _gxcPage() {\n")
-	buf.WriteString(code)
+
+	// Fix incomplete assignment syntax (e.g., `x :=` -> `x := nil`)
+	fixedCode := fixIncompleteAssignments(code)
+	buf.WriteString(fixedCode)
 	buf.WriteString("\n}\n")
 
 	// Write to temp file
@@ -286,6 +301,23 @@ func extractImportsFromFrontmatter(code string) ([]string, string) {
 	}
 
 	return imports, strings.Join(codeLines, "\n")
+}
+
+// fixIncompleteAssignments fixes syntax errors in incomplete code for gopls
+func fixIncompleteAssignments(code string) string {
+	lines := strings.Split(code, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Fix incomplete lines
+		if strings.HasSuffix(trimmed, ":=") {
+			// `x :=` -> `x := nil`
+			lines[i] = line + " nil"
+		} else if strings.Contains(trimmed, ":=") && strings.HasSuffix(trimmed, ".") {
+			// `x := foo.` -> `x := foo.Bar`
+			lines[i] = line + "Placeholder"
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // CreateVirtualGoFileFromScript converts script content to valid Go file
@@ -359,6 +391,15 @@ func (gp *GoplsProxy) Completion(ctx context.Context, goPath string, line, char 
 			"languageId": "go",
 			"version":    1,
 			"text":       string(content),
+		},
+	}); err != nil {
+		return nil, err
+	}
+
+	// Send didSave to trigger gopls indexing
+	if err := gp.notify("textDocument/didSave", map[string]interface{}{
+		"textDocument": map[string]interface{}{
+			"uri": fileURI,
 		},
 	}); err != nil {
 		return nil, err
