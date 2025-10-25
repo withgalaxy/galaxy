@@ -18,6 +18,8 @@ type ComponentCompiler struct {
 	Bundler         *assets.Bundler
 	Resolver        *ComponentResolver
 	CollectedStyles []parser.Style
+	UsedComponents  []string
+	componentsSeen  map[string]bool
 }
 
 func NewComponentCompiler(baseDir string) *ComponentCompiler {
@@ -36,6 +38,23 @@ func (c *ComponentCompiler) SetResolver(resolver *ComponentResolver) {
 func (c *ComponentCompiler) ClearCache() {
 	c.Cache = make(map[string]*parser.Component)
 	c.CollectedStyles = nil
+	c.UsedComponents = nil
+	c.componentsSeen = nil
+}
+
+func (c *ComponentCompiler) ResetComponentTracking() {
+	c.UsedComponents = nil
+	c.componentsSeen = make(map[string]bool)
+}
+
+func (c *ComponentCompiler) trackComponent(componentPath string) {
+	if c.componentsSeen == nil {
+		c.componentsSeen = make(map[string]bool)
+	}
+	if !c.componentsSeen[componentPath] {
+		c.UsedComponents = append(c.UsedComponents, componentPath)
+		c.componentsSeen[componentPath] = true
+	}
 }
 
 func (c *ComponentCompiler) Compile(filePath string, props map[string]interface{}, slots map[string]string) (string, error) {
@@ -116,6 +135,8 @@ func (c *ComponentCompiler) ProcessComponentTags(template string, ctx *executor.
 			return fmt.Sprintf("<!-- Component resolution error: %v -->", err)
 		}
 
+		c.trackComponent(componentPath)
+
 		props := c.parseAttributes(attrs, ctx)
 
 		slots := make(map[string]string)
@@ -147,6 +168,8 @@ func (c *ComponentCompiler) ProcessComponentTags(template string, ctx *executor.
 		if err != nil {
 			return fmt.Sprintf("<!-- Component resolution error: %v -->", err)
 		}
+
+		c.trackComponent(componentPath)
 
 		props := c.parseAttributes(attrs, ctx)
 

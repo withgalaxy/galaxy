@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"encoding/json"
 	"github.com/cameron-webmatter/galaxy/internal/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/codegen"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
@@ -25,10 +26,8 @@ import (
 	"github.com/cameron-webmatter/galaxy/pkg/router"
 	"github.com/cameron-webmatter/galaxy/pkg/ssr"
 	"github.com/cameron-webmatter/galaxy/pkg/template"
-	"encoding/json"
 
 	"github.com/cameron-webmatter/galaxy/pkg/hmr"
-
 )
 
 type DevServer struct {
@@ -53,10 +52,10 @@ type DevServer struct {
 	codegenServerCmd   *exec.Cmd
 	HMRServer          *hmr.Server
 	ChangeTracker      *hmr.ChangeTracker
+	ComponentTracker   *hmr.ComponentTracker
 
-
-	codegenServerPort  int
-	codegenReady       bool
+	codegenServerPort int
+	codegenReady      bool
 }
 
 func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *DevServer {
@@ -86,16 +85,15 @@ func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *
 		MiddlewareCompiler: middleware.NewCompiler(rootDir, ".galaxy/middleware"),
 		Verbose:            verbose,
 
-		UseCodegen:         useCodegen,
-		PageCache:          NewPageCache(),
-		PluginCompiler:     NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
-
+		UseCodegen:     useCodegen,
+		PageCache:      NewPageCache(),
+		PluginCompiler: NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
 	}
 
 	srv.ChangeTracker = hmr.NewChangeTracker()
+	srv.ComponentTracker = hmr.NewComponentTracker()
 
 	srv.Bundler.DevMode = true
-
 
 	return srv
 }
@@ -119,11 +117,13 @@ func (s *DevServer) Start() error {
 		}
 	}
 
-
 	s.HMRServer = hmr.NewServer()
 	s.HMRServer.Start()
 	http.HandleFunc("/__hmr", s.HMRServer.HandleWebSocket)
 	http.HandleFunc("/__hmr/client.js", s.serveHMRClient)
+	http.HandleFunc("/__hmr/morph.js", s.serveHMRMorph)
+	http.HandleFunc("/__hmr/overlay.js", s.serveHMROverlay)
+	http.HandleFunc("/__hmr/render", s.handleHMRRender)
 
 	http.HandleFunc("/", s.logRequest(s.handleRequest))
 
@@ -366,7 +366,12 @@ func (s *DevServer) handlePage(route *router.Route, mwCtx *middleware.Context, p
 	}
 
 	s.Compiler.CollectedStyles = nil
+	s.Compiler.ResetComponentTracking()
 	processedTemplate := s.Compiler.ProcessComponentTags(comp.Template, ctx)
+
+	if s.ComponentTracker != nil && len(s.Compiler.UsedComponents) > 0 {
+		s.ComponentTracker.TrackPageComponents(route.FilePath, s.Compiler.UsedComponents)
+	}
 
 	engine := template.NewEngine(ctx)
 	rendered, err := engine.Render(processedTemplate, nil)
@@ -544,7 +549,12 @@ func (s *DevServer) handlePageWithCodegen(route *router.Route, mwCtx *middleware
 	// Create minimal executor context for component processing only
 	dummyCtx := executor.NewContext()
 	s.Compiler.CollectedStyles = nil
+	s.Compiler.ResetComponentTracking()
 	processedTemplate := s.Compiler.ProcessComponentTags(comp.Template, dummyCtx)
+
+	if s.ComponentTracker != nil && len(s.Compiler.UsedComponents) > 0 {
+		s.ComponentTracker.TrackPageComponents(route.FilePath, s.Compiler.UsedComponents)
+	}
 
 	// Update component with processed template
 	comp.Template = processedTemplate
@@ -683,7 +693,11 @@ func (s *DevServer) handleHMRRender(w http.ResponseWriter, r *http.Request) {
 
 	comp, err := parser.Parse(string(content))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+			"stack": fmt.Sprintf("%+v", err),
+		})
 		return
 	}
 
@@ -702,7 +716,14 @@ func (s *DevServer) handleHMRRender(w http.ResponseWriter, r *http.Request) {
 
 	ctx := executor.NewContext()
 	if comp.Frontmatter != "" {
-		ctx.Execute(comp.Frontmatter)
+		if err := ctx.Execute(comp.Frontmatter); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": err.Error(),
+				"stack": fmt.Sprintf("%+v", err),
+			})
+			return
+		}
 	}
 
 	s.Compiler.CollectedStyles = nil
@@ -711,7 +732,11 @@ func (s *DevServer) handleHMRRender(w http.ResponseWriter, r *http.Request) {
 	engine := template.NewEngine(ctx)
 	rendered, err := engine.Render(processedTemplate, nil)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+			"stack": fmt.Sprintf("%+v", err),
+		})
 		return
 	}
 
@@ -739,6 +764,32 @@ func getHMRMorphPath() string {
 		"../galaxy/pkg/hmr/morph.js",
 		"../../galaxy/pkg/hmr/morph.js",
 		"../../../galaxy/pkg/hmr/morph.js",
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func (s *DevServer) serveHMROverlay(w http.ResponseWriter, r *http.Request) {
+	overlayJS, err := os.ReadFile(getHMROverlayPath())
+	if err != nil {
+		http.Error(w, "overlay.js not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Write(overlayJS)
+}
+
+func getHMROverlayPath() string {
+	paths := []string{
+		"/Users/cameron/dev/galaxy-mono/galaxy/pkg/hmr/overlay.js",
+		"pkg/hmr/overlay.js",
+		"../galaxy/pkg/hmr/overlay.js",
+		"../../galaxy/pkg/hmr/overlay.js",
+		"../../../galaxy/pkg/hmr/overlay.js",
 	}
 	for _, p := range paths {
 		if _, err := os.Stat(p); err == nil {

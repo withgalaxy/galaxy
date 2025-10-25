@@ -94,7 +94,6 @@ func (s *Server) BroadcastScriptReload(path string) {
 	}
 }
 
-
 func (m Message) MarshalJSON() ([]byte, error) {
 	type Alias Message
 	return json.Marshal(struct{ *Alias }{Alias: (*Alias)(&m)})
@@ -104,5 +103,23 @@ func (s *Server) BroadcastTemplateUpdate(path string) {
 	s.broadcast <- Message{
 		Type: MsgTypeTemplateUpdate,
 		Path: path,
+	}
+}
+
+func (s *Server) BroadcastError(message, stack string) {
+	s.broadcast <- Message{
+		Type:    MsgTypeError,
+		Message: message,
+		Stack:   stack,
+	}
+}
+
+func (s *Server) BroadcastComponentUpdate(componentPath string, componentName string) {
+	s.broadcast <- Message{
+		Type: MsgTypeComponentUpdate,
+		Path: componentPath,
+		Metadata: map[string]interface{}{
+			"componentName": componentName,
+		},
 	}
 }

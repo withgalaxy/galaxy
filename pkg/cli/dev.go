@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"github.com/cameron-webmatter/galaxy/pkg/parser"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -9,13 +11,10 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"crypto/sha256"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
 
-
-	"github.com/fsnotify/fsnotify"
 	"github.com/cameron-webmatter/galaxy/pkg/config"
 	"github.com/cameron-webmatter/galaxy/pkg/server"
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )
 
@@ -103,50 +102,63 @@ func runDev(cmd *cobra.Command, args []string) error {
 						}
 					}
 
-if filepath.Ext(event.Name) == ".gxc" && isUnderDir(event.Name, srcDir) {
-	srv.Compiler.ClearCache()
+					if filepath.Ext(event.Name) == ".gxc" && isUnderDir(event.Name, srcDir) {
+						srv.Compiler.ClearCache()
 
-	if srv.ChangeTracker != nil && srv.HMRServer != nil {
-		diff, err := srv.ChangeTracker.DetectChange(event.Name)
-		if err == nil {
-			if diff.CanHotSwapStyles() {
-				content, _ := os.ReadFile(event.Name)
-				comp, _ := parser.Parse(string(content))
-				if comp != nil && len(comp.Styles) > 0 {
-					var combined strings.Builder
-					for _, style := range comp.Styles {
-						combined.WriteString(style.Content)
-						combined.WriteString("\n")
-					}
-					hash := fmt.Sprintf("%x", sha256.Sum256([]byte(combined.String())))[:8]
-					srv.HMRServer.BroadcastStyleUpdate(event.Name, combined.String(), hash)
-					if !verbose && !silent {
-						fmt.Printf("🎨 Styles updated (hot swap)\n")
-					}
-				}
-			} else if diff.NeedsFullReload() {
-				srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
-			} else if diff.TemplateChanged {
-				srv.HMRServer.BroadcastTemplateUpdate(event.Name)
-			}
-		}
-	}
+						isComponent := !isUnderDir(event.Name, pagesDir)
 
-	if isUnderDir(event.Name, pagesDir) && event.Op&(fsnotify.Create|fsnotify.Remove) != 0 {
-		if err := srv.ReloadRoutes(); err != nil && !silent {
-			fmt.Printf("⚠ Failed to reload routes: %v\n", err)
-		}
-	}
-}
+						if srv.ChangeTracker != nil && srv.HMRServer != nil {
+							diff, err := srv.ChangeTracker.DetectChange(event.Name)
+							if err == nil {
+								if isComponent && srv.ComponentTracker != nil {
+									affectedPages := srv.ComponentTracker.GetAffectedPages(event.Name)
+									if len(affectedPages) > 0 {
+										componentName := strings.TrimSuffix(filepath.Base(event.Name), ".gxc")
+										srv.HMRServer.BroadcastComponentUpdate(event.Name, componentName)
+										if !verbose && !silent {
+											fmt.Printf("🧩 Component updated: %s (affects %d page(s))\n", componentName, len(affectedPages))
+										}
+									} else {
+										srv.HMRServer.BroadcastReload()
+									}
+								} else if diff.CanHotSwapStyles() {
+									content, _ := os.ReadFile(event.Name)
+									comp, _ := parser.Parse(string(content))
+									if comp != nil && len(comp.Styles) > 0 {
+										var combined strings.Builder
+										for _, style := range comp.Styles {
+											combined.WriteString(style.Content)
+											combined.WriteString("\n")
+										}
+										hash := fmt.Sprintf("%x", sha256.Sum256([]byte(combined.String())))[:8]
+										srv.HMRServer.BroadcastStyleUpdate(event.Name, combined.String(), hash)
+										if !verbose && !silent {
+											fmt.Printf("🎨 Styles updated (hot swap)\n")
+										}
+									}
+								} else if diff.NeedsFullReload() {
+									srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
+								} else if diff.TemplateChanged {
+									srv.HMRServer.BroadcastTemplateUpdate(event.Name)
+								}
+							}
+						}
+
+						if isUnderDir(event.Name, pagesDir) && event.Op&(fsnotify.Create|fsnotify.Remove) != 0 {
+							if err := srv.ReloadRoutes(); err != nil && !silent {
+								fmt.Printf("⚠ Failed to reload routes: %v\n", err)
+							}
+						}
+					}
 					if filepath.Base(event.Name) == "middleware.go" && isUnderDir(event.Name, srcDir) {
 						if !verbose && !silent {
 							fmt.Printf("🔄 Reloading middleware...\n")
 						}
 						if err := srv.ReloadMiddleware(); err != nil && !silent {
 
-						if srv.HMRServer != nil {
-							srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
-						}
+							if srv.HMRServer != nil {
+								srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
+							}
 
 							fmt.Printf("⚠ Middleware reload failed: %v\n", err)
 						} else if !verbose && !silent {

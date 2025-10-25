@@ -7,6 +7,7 @@
     constructor() {
       this.morphdom = null;
       this.loadMorph();
+      this.loadOverlay();
       this.connect();
       this.restoreState();
     }
@@ -17,11 +18,44 @@
         script.src = '/__hmr/morph.js';
         script.onload = () => {
           this.morphdom = window.morphdom || morphdom;
-          console.log('[HMR] Morphdom loaded');
+          this.log('Morphdom loaded', 'info');
         };
         document.head.appendChild(script);
       } catch (e) {
-        console.warn('[HMR] Failed to load morphdom:', e);
+        this.log('Failed to load morphdom', 'error', e);
+      }
+    }
+
+    async loadOverlay() {
+      try {
+        const script = document.createElement('script');
+        script.src = '/__hmr/overlay.js';
+        document.head.appendChild(script);
+      } catch (e) {
+        this.log('Failed to load overlay', 'error', e);
+      }
+    }
+
+    log(message, level = 'info', data = null) {
+      const prefix = '%c[HMR]%c';
+      const prefixStyle = 'color: #61dafb; font-weight: bold;';
+      const messageStyle = 'color: inherit;';
+      
+      const styles = {
+        info: 'color: #3498db;',
+        success: 'color: #27ae60;',
+        warn: 'color: #f39c12;',
+        error: 'color: #e74c3c;'
+      };
+
+      const fullMessage = `${prefix} ${message}`;
+      
+      if (level === 'error' && data) {
+        console.error(fullMessage, prefixStyle, styles[level], data);
+      } else if (level === 'warn') {
+        console.warn(fullMessage, prefixStyle, styles[level]);
+      } else {
+        console.log(fullMessage, prefixStyle, styles[level]);
       }
     }
 
@@ -30,7 +64,10 @@
       this.ws = new WebSocket(`${protocol}//${window.location.host}/__hmr`);
       
       this.ws.onopen = () => {
-        console.log('[HMR] Connected');
+        this.log('Connected', 'success');
+        if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
+          window.__galaxyHmr.hideError();
+        }
       };
 
       this.ws.onmessage = (e) => {
@@ -38,26 +75,26 @@
           const msg = JSON.parse(e.data);
           this.handleMessage(msg);
         } catch (err) {
-          console.error('[HMR] Message parse error:', err);
+          this.log('Message parse error', 'error', err);
         }
       };
 
       this.ws.onclose = () => {
-        console.log('[HMR] Disconnected, reconnecting...');
+        this.log('Disconnected, reconnecting...', 'warn');
         setTimeout(() => this.connect(), 1000);
       };
 
       this.ws.onerror = (err) => {
-        console.error('[HMR] Error:', err);
+        this.log('Connection error', 'error', err);
       };
     }
 
     async handleMessage(msg) {
-      console.log('[HMR] Received:', msg.type);
+      this.log(`Received: ${msg.type}`, 'info');
       
       switch(msg.type) {
         case 'reload':
-          console.log('[HMR] Reloading page...');
+          this.log('Reloading page...', 'info');
           window.location.reload();
           break;
         
@@ -66,7 +103,7 @@
           break;
         
         case 'script-reload':
-          console.log('[HMR] Script changed, reloading...');
+          this.log('Script changed, reloading...', 'info');
           window.location.reload();
           break;
         
@@ -78,30 +115,94 @@
           await this.handleTemplateUpdate(msg);
           break;
         
+        case 'component-update':
+          await this.handleComponentUpdate(msg);
+          break;
+        
+        case 'error':
+          this.handleError(msg);
+          break;
+        
         default:
-          console.warn('[HMR] Unknown message type:', msg.type);
+          this.log(`Unknown message type: ${msg.type}`, 'warn');
       }
     }
 
-    async handleTemplateUpdate(msg) {
+    handleError(msg) {
+      if (window.__galaxyHmr && window.__galaxyHmr.showError) {
+        window.__galaxyHmr.showError({
+          message: msg.message || 'Build failed',
+          stack: msg.stack || ''
+        });
+      } else {
+        this.log(msg.message || 'Build failed', 'error');
+      }
+    }
+
+    async handleComponentUpdate(msg) {
       if (!this.morphdom) {
-        console.log('[HMR] Morphdom not ready, reloading...');
+        this.log('Morphdom not ready, reloading page...', 'warn');
         this.saveState();
         window.location.reload();
         return;
       }
 
       try {
-        console.log('[HMR] Fetching updated template...');
+        const componentName = msg.metadata?.componentName || 'Component';
+        this.log(`Component ${componentName} updated, refreshing page...`, 'info');
+        
+        const response = await fetch(window.location.href);
+        const html = await response.text();
+        
+        const parser = new DOMParser();
+        const newDoc = parser.parseFromString(html, 'text/html');
+        const newMain = newDoc.querySelector('main') || newDoc.body;
+        const currentMain = document.querySelector('main') || document.body;
+        
+        this.morphdom(currentMain, newMain.outerHTML);
+        
+        if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
+          window.__galaxyHmr.hideError();
+        }
+        
+        this.log(`Component ${componentName} updated ✨`, 'success');
+        this.showToast(`${componentName} updated`);
+      } catch (e) {
+        this.log('Component update failed', 'error', e);
+        this.saveState();
+        window.location.reload();
+      }
+    }
+
+    async handleTemplateUpdate(msg) {
+      if (!this.morphdom) {
+        this.log('Morphdom not ready, reloading...', 'warn');
+        this.saveState();
+        window.location.reload();
+        return;
+      }
+
+      try {
+        this.log('Fetching updated template...', 'info');
         const response = await fetch(`/__hmr/render?path=${encodeURIComponent(msg.path)}`);
         const data = await response.json();
+        
+        if (data.error) {
+          this.handleError({ message: data.error, stack: data.stack });
+          return;
+        }
         
         const container = document.querySelector('main') || document.body;
         this.morphdom(container, `<main>${data.html}</main>`);
         
-        console.log('[HMR] Template updated without reload ✨');
+        if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
+          window.__galaxyHmr.hideError();
+        }
+        
+        this.log('Template updated ✨', 'success');
+        this.showToast('Template updated');
       } catch (e) {
-        console.error('[HMR] Template update failed:', e);
+        this.log('Template update failed', 'error', e);
         this.saveState();
         window.location.reload();
       }
@@ -111,16 +212,22 @@
       const moduleId = msg.moduleId || msg.path;
       
       if (window.__galaxyWasmAcceptHandlers && window.__galaxyWasmAcceptHandlers[moduleId]) {
-        console.log('[WASM HMR] Hot reloading module:', moduleId);
+        this.log(`Hot reloading WASM module: ${moduleId}`, 'info');
         try {
           await window.loadWasmModule(moduleId, msg.path, msg.hash, true);
-          console.log('[WASM HMR] Module reloaded ✨');
+          
+          if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
+            window.__galaxyHmr.hideError();
+          }
+          
+          this.log('WASM module reloaded ✨', 'success');
+          this.showToast('WASM updated');
         } catch (e) {
-          console.error('[WASM HMR] Reload failed:', e);
+          this.log('WASM reload failed', 'error', e);
           window.location.reload();
         }
       } else {
-        console.log('[WASM HMR] Module cannot hot reload, full reload');
+        this.log('WASM module cannot hot reload, full reload', 'info');
         window.location.reload();
       }
     }
@@ -139,7 +246,19 @@
       }
       
       styleEl.textContent = css;
-      console.log('[HMR] Styles updated without reload ✨');
+      
+      if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
+        window.__galaxyHmr.hideError();
+      }
+      
+      this.log('Styles updated ✨', 'success');
+      this.showToast('Styles updated');
+    }
+
+    showToast(message, type = 'success') {
+      if (window.__galaxyHmr && window.__galaxyHmr.showToast) {
+        window.__galaxyHmr.showToast(message, type);
+      }
     }
 
     saveState() {
@@ -193,9 +312,9 @@
           }, 0);
         }
         
-        console.log('[HMR] State restored');
+        this.log('State restored', 'info');
       } catch (e) {
-        console.error('[HMR] Failed to restore state:', e);
+        this.log('Failed to restore state', 'error', e);
       }
     }
   }
