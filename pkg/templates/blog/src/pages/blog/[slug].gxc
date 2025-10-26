@@ -1,0 +1,120 @@
+---
+import "github.com/cameron-webmatter/galaxy/pkg/content"
+
+collections := content.NewCollections("./src/content")
+entry, err := collections.GetEntry("blog", Galaxy.Params["slug"])
+if err != nil {
+	Galaxy.Redirect("/404", 404)
+}
+
+rendered, _ := entry.Render()
+
+var title = entry.GetString("title")
+var pubDate = entry.GetString("pubDate")
+var author = entry.GetString("author")
+---
+
+<Layout title={title}>
+	<article>
+		<header class="post-header">
+			<h1>{title}</h1>
+			<div class="post-meta">
+				<time>{pubDate}</time>
+				<span galaxy:if={author} class="author">by {author}</span>
+			</div>
+		</header>
+		<div class="post-content">
+			{@html rendered}
+		</div>
+	</article>
+</Layout>
+
+<style>
+article {
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 2rem;
+	font-family: system-ui, sans-serif;
+}
+
+.post-header {
+	margin-bottom: 2rem;
+	padding-bottom: 1rem;
+	border-bottom: 2px solid #e5e7eb;
+}
+
+h1 {
+	margin: 0 0 1rem 0;
+	font-size: 2.5rem;
+	color: #1f2937;
+}
+
+.post-meta {
+	display: flex;
+	gap: 1rem;
+	color: #6b7280;
+	font-size: 0.875rem;
+}
+
+.post-content {
+	line-height: 1.7;
+	color: #374151;
+}
+
+.post-content h2 {
+	margin: 2rem 0 1rem 0;
+	font-size: 1.875rem;
+	color: #1f2937;
+}
+
+.post-content h3 {
+	margin: 1.5rem 0 0.75rem 0;
+	font-size: 1.5rem;
+	color: #1f2937;
+}
+
+.post-content p {
+	margin: 1rem 0;
+}
+
+.post-content code {
+	background: #f3f4f6;
+	padding: 0.125rem 0.375rem;
+	border-radius: 0.25rem;
+	font-size: 0.875em;
+	font-family: 'Courier New', monospace;
+}
+
+.post-content pre {
+	background: #1f2937;
+	color: #f9fafb;
+	padding: 1rem;
+	border-radius: 0.5rem;
+	overflow-x: auto;
+	margin: 1.5rem 0;
+}
+
+.post-content pre code {
+	background: transparent;
+	padding: 0;
+	color: inherit;
+}
+
+.post-content ul, .post-content ol {
+	margin: 1rem 0;
+	padding-left: 2rem;
+}
+
+.post-content li {
+	margin: 0.5rem 0;
+}
+
+.post-content a {
+	color: #2563eb;
+	text-decoration: underline;
+}
+
+.post-content a:hover {
+	color: #1d4ed8;
+}
+</style>
