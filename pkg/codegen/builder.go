@@ -65,6 +65,10 @@ func (b *CodegenBuilder) Build() error {
 			continue
 		}
 
+		if route.Type == router.RouteMarkdown {
+			continue
+		}
+
 		content, err := os.ReadFile(route.FilePath)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", route.FilePath, err)

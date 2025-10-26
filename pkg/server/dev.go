@@ -251,12 +251,6 @@ func getStatusColor(status int) string {
 }
 
 func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
-	// If codegen server is ready, proxy all requests to it
-	if s.UseCodegen && s.codegenReady {
-		s.proxyToCodegenServer(w, r)
-		return
-	}
-
 	if r.URL.Path == "/wasm_exec.js" {
 		s.serveWasmExec(w, r)
 		return
@@ -270,6 +264,20 @@ func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	route, params := s.Router.Match(r.URL.Path)
 	if route == nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	// Handle markdown routes directly (not via codegen)
+	if route.Type == router.RouteMarkdown {
+		mwCtx := middleware.NewContext(w, r)
+		mwCtx.Params = params
+		s.handleMarkdownPage(route, mwCtx, params)
+		return
+	}
+
+	// If codegen server is ready, proxy non-markdown requests to it
+	if s.UseCodegen && s.codegenReady {
+		s.proxyToCodegenServer(w, r)
 		return
 	}
 

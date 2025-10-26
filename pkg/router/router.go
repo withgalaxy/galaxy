@@ -135,7 +135,7 @@ func (r *Router) Match(path string) (*Route, map[string]string) {
 }
 
 func (r *Router) matchRoute(route *Route, path string) map[string]string {
-	if route.Type == RouteStatic || route.Type == RouteEndpoint {
+	if route.Type == RouteStatic || route.Type == RouteEndpoint || route.Type == RouteMarkdown {
 		if route.Pattern == path {
 			return make(map[string]string)
 		}
