@@ -12,12 +12,14 @@ import (
 )
 
 type Server struct {
-	conn     jsonrpc2.Conn
-	cache    map[protocol.DocumentURI]*DocumentState
-	cacheMu  sync.RWMutex
-	project  *ProjectContext
-	rootPath string
-	gopls    *GoplsProxy
+	conn           jsonrpc2.Conn
+	cache          map[protocol.DocumentURI]*DocumentState
+	cacheMu        sync.RWMutex
+	project        *ProjectContext
+	rootPath       string
+	gopls          *GoplsProxy
+	componentCache map[string]*ComponentInfo
+	componentMu    sync.RWMutex
 }
 
 type DocumentState struct {
@@ -28,8 +30,9 @@ type DocumentState struct {
 
 func NewServer(conn jsonrpc2.Conn) *Server {
 	return &Server{
-		conn:  conn,
-		cache: make(map[protocol.DocumentURI]*DocumentState),
+		conn:           conn,
+		cache:          make(map[protocol.DocumentURI]*DocumentState),
+		componentCache: make(map[string]*ComponentInfo),
 	}
 }
 
@@ -350,4 +353,30 @@ func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionPara
 			},
 		},
 	}, nil
+}
+
+func (s *Server) loadComponentInfo(componentPath string) (*ComponentInfo, error) {
+	s.componentMu.RLock()
+	cached, ok := s.componentCache[componentPath]
+	s.componentMu.RUnlock()
+
+	if ok {
+		return cached, nil
+	}
+
+	content, err := os.ReadFile(componentPath)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := ParseComponentProps(componentPath, string(content))
+	if err != nil {
+		return nil, err
+	}
+
+	s.componentMu.Lock()
+	s.componentCache[componentPath] = info
+	s.componentMu.Unlock()
+
+	return info, nil
 }

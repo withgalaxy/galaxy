@@ -78,6 +78,11 @@ func isTagNameChar(c byte) bool {
 }
 
 func isStandardHTMLTag(tag string) bool {
+	// Components start with uppercase
+	if len(tag) > 0 && tag[0] >= 'A' && tag[0] <= 'Z' {
+		return false
+	}
+
 	tag = strings.ToLower(tag)
 	standardTags := map[string]bool{
 		"a": true, "div": true, "span": true, "p": true, "h1": true, "h2": true, "h3": true,

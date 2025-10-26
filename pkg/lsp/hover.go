@@ -9,6 +9,11 @@ import (
 )
 
 func (s *Server) getHover(content string, pos protocol.Position) *protocol.Hover {
+	// Check for component attribute hover first
+	if hover := s.getComponentAttributeHover(content, pos); hover != nil {
+		return hover
+	}
+
 	comp, err := parser.Parse(content)
 	if err != nil {
 		return nil
@@ -29,10 +34,10 @@ func (s *Server) getHover(content string, pos protocol.Position) *protocol.Hover
 	if int(pos.Line) >= len(lines) {
 		return nil
 	}
-	
+
 	currentLine := lines[pos.Line]
 	word := s.getWordAtPosition(currentLine, int(pos.Character))
-	
+
 	if word == "" {
 		return nil
 	}
@@ -45,8 +50,8 @@ func (s *Server) getHover(content string, pos protocol.Position) *protocol.Hover
 		for varStart >= 0 && isIdentChar(beforeCursor[varStart]) {
 			varStart--
 		}
-		baseVar := beforeCursor[varStart+1:idx]
-		
+		baseVar := beforeCursor[varStart+1 : idx]
+
 		// Get member info
 		if typeInfo, ok := inferencer.GetType(baseVar); ok {
 			if typeInfo.Fields != nil {
@@ -65,7 +70,7 @@ func (s *Server) getHover(content string, pos protocol.Position) *protocol.Hover
 	// Variable hover
 	if typeInfo, ok := inferencer.GetType(word); ok {
 		hoverText := fmt.Sprintf("**%s**: `%s`", word, typeInfo.TypeName)
-		
+
 		if typeInfo.IsStruct {
 			hoverText += "\n\n*struct*"
 		} else if typeInfo.IsMap {
@@ -89,21 +94,61 @@ func (s *Server) getWordAtPosition(line string, col int) string {
 	if col > len(line) {
 		col = len(line)
 	}
-	
+
 	// Find word boundaries
 	start := col
 	for start > 0 && isIdentChar(line[start-1]) {
 		start--
 	}
-	
+
 	end := col
 	for end < len(line) && isIdentChar(line[end]) {
 		end++
 	}
-	
+
 	if start >= end {
 		return ""
 	}
-	
+
 	return line[start:end]
+}
+
+func (s *Server) getComponentAttributeHover(content string, pos protocol.Position) *protocol.Hover {
+	componentName, attributeName, found := getAttributeAtPosition(content, pos)
+	if !found {
+		return nil
+	}
+
+	componentPath := findComponentFile(s.rootPath, componentName)
+	if componentPath == "" {
+		return nil
+	}
+
+	componentInfo, err := s.loadComponentInfo(componentPath)
+	if err != nil {
+		return nil
+	}
+
+	for _, prop := range componentInfo.Props {
+		if prop.Name == attributeName {
+			hoverText := fmt.Sprintf("**%s**: `%s`", prop.Name, prop.Type)
+
+			if prop.DefaultValue != "" {
+				hoverText += fmt.Sprintf("\n\nDefault: `%s`", prop.DefaultValue)
+			}
+
+			if prop.Documentation != "" {
+				hoverText += fmt.Sprintf("\n\n%s", prop.Documentation)
+			}
+
+			return &protocol.Hover{
+				Contents: protocol.MarkupContent{
+					Kind:  protocol.Markdown,
+					Value: hoverText,
+				},
+			}
+		}
+	}
+
+	return nil
 }
