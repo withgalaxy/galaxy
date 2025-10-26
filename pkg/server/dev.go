@@ -538,7 +538,7 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 	s.codegenServerPort = s.Port + 1000
 
 	// Build the server using CodegenBuilder
-	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, "dist", "dev-server", s.PublicDir)
+	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, ".galaxy", "dev-server", s.PublicDir)
 	builder.Bundler = s.Bundler
 	if err := builder.Build(); err != nil {
 		return fmt.Errorf("codegen build failed: %w", err)
@@ -547,11 +547,11 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 	fmt.Println("✅ Codegen server built successfully")
 	fmt.Println("🚀 Starting codegen server...")
 
-	// Start the compiled server from dist/server directory
+	// Start the compiled server from .galaxy/server directory
 	// so it can find _assets, wasm_exec.js, etc.
 	serverBinary := "./galaxy-codegen-server"
 	cmd := exec.Command(serverBinary)
-	cmd.Dir = filepath.Join(s.RootDir, "dist", "server")
+	cmd.Dir = filepath.Join(s.RootDir, ".galaxy", "server")
 
 	// Load .env and pass to codegen server
 	envVars := os.Environ()
@@ -603,7 +603,7 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 }
 
 func (s *DevServer) broadcastWasmReloadFromManifest(filesToRebuild []string) {
-	manifestPath := filepath.Join(s.RootDir, "dist", "server", "_assets", "wasm-manifest.json")
+	manifestPath := filepath.Join(s.RootDir, ".galaxy", "server", "_assets", "wasm-manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		fmt.Printf("⚠ Could not read WASM manifest: %v\n", err)
@@ -765,7 +765,7 @@ func (s *DevServer) executeCodegenRebuild() {
 	// Temporarily mark codegen as not ready (fall back to HMR)
 	s.codegenReady = false
 
-	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, "dist", "dev-server", s.PublicDir)
+	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, ".galaxy", "dev-server", s.PublicDir)
 	builder.Bundler = s.Bundler
 
 	var rebuildErr error
@@ -791,7 +791,7 @@ func (s *DevServer) executeCodegenRebuild() {
 	// Start new codegen server
 	serverBinary := "./galaxy-codegen-server"
 	cmd := exec.Command(serverBinary)
-	cmd.Dir = filepath.Join(s.RootDir, "dist", "server")
+	cmd.Dir = filepath.Join(s.RootDir, ".galaxy", "server")
 
 	// Load .env and pass to codegen server
 	envVars := os.Environ()
