@@ -167,7 +167,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 					}
 				}
 			case err := <-watcher.Errors:
-				if !silent {
+				if err != nil && !silent {
 					fmt.Printf("⚠ Watcher error: %v\n", err)
 				}
 			}
