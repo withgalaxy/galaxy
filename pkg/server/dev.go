@@ -517,6 +517,12 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 	return fmt.Errorf("codegen server did not become ready")
 }
 
+func (s *DevServer) Shutdown() {
+	if s.codegenServerCmd != nil && s.codegenServerCmd.Process != nil {
+		s.codegenServerCmd.Process.Kill()
+	}
+}
+
 func (s *DevServer) proxyToCodegenServer(w http.ResponseWriter, r *http.Request) {
 	target, _ := url.Parse(fmt.Sprintf("http://localhost:%d", s.codegenServerPort))
 	proxy := httputil.NewSingleHostReverseProxy(target)

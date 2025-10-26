@@ -181,6 +181,9 @@ func runDev(cmd *cobra.Command, args []string) error {
 	go func() {
 		<-sigChan
 		fmt.Println("\n👋 Shutting down...")
+
+		srv.Shutdown()
+
 		if srv.Lifecycle != nil {
 			if err := srv.Lifecycle.ExecuteShutdown(); err != nil {
 				fmt.Printf("⚠ Shutdown error: %v\n", err)
