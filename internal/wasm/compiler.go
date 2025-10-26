@@ -166,6 +166,21 @@ func prepareScript(script, hash string, useTinyGo bool) (string, error) {
 	body = removePackageDecl(body)
 	hasMain := containsMainFunc(body)
 
+	// Auto-add syscall/js if HMR helpers or js.* usage detected
+	needsSyscallJS := strings.Contains(script, "js.") || strings.Contains(script, "hmrAccept") || strings.Contains(script, "hmrOnDispose")
+	if needsSyscallJS {
+		hasSyscallJS := false
+		for _, imp := range imports {
+			if strings.Contains(imp, "syscall/js") {
+				hasSyscallJS = true
+				break
+			}
+		}
+		if !hasSyscallJS {
+			imports = append([]string{`"syscall/js"`}, imports...)
+		}
+	}
+
 	var final strings.Builder
 	final.WriteString("package main\n\n")
 
@@ -317,10 +332,10 @@ func isTinyGoAvailable() bool {
 
 func injectHMRHelpers(script, moduleID string) string {
 	var sb strings.Builder
-	
+
 	sb.WriteString("// HMR helpers (auto-injected)\n")
 	sb.WriteString(fmt.Sprintf("var __hmrModuleID = %q\n\n", moduleID))
-	
+
 	sb.WriteString("func hmrAccept(callback func()) {\n")
 	sb.WriteString("\tensureHMRGlobals()\n")
 	sb.WriteString("\thandlers := js.Global().Get(\"__galaxyWasmAcceptHandlers\")\n")
@@ -330,7 +345,7 @@ func injectHMRHelpers(script, moduleID string) string {
 	sb.WriteString("\t})\n")
 	sb.WriteString("\thandlers.Set(__hmrModuleID, cb)\n")
 	sb.WriteString("}\n\n")
-	
+
 	sb.WriteString("func hmrOnDispose(handler func()) {\n")
 	sb.WriteString("\tensureHMRGlobals()\n")
 	sb.WriteString("\tmodules := js.Global().Get(\"__galaxyWasmModules\")\n")
@@ -343,7 +358,7 @@ func injectHMRHelpers(script, moduleID string) string {
 	sb.WriteString("\t\tmodule.Set(\"disposeHandler\", cb)\n")
 	sb.WriteString("\t}\n")
 	sb.WriteString("}\n\n")
-	
+
 	sb.WriteString("func hmrSaveState(key string, value interface{}) {\n")
 	sb.WriteString("\tensureHMRGlobals()\n")
 	sb.WriteString("\tstate := js.Global().Get(\"__galaxyWasmState\")\n")
@@ -354,7 +369,7 @@ func injectHMRHelpers(script, moduleID string) string {
 	sb.WriteString("\t}\n")
 	sb.WriteString("\tmoduleState.Set(key, js.ValueOf(value))\n")
 	sb.WriteString("}\n\n")
-	
+
 	sb.WriteString("func hmrLoadState(key string) js.Value {\n")
 	sb.WriteString("\tensureHMRGlobals()\n")
 	sb.WriteString("\tstate := js.Global().Get(\"__galaxyWasmState\")\n")
@@ -364,7 +379,7 @@ func injectHMRHelpers(script, moduleID string) string {
 	sb.WriteString("\t}\n")
 	sb.WriteString("\treturn moduleState.Get(key)\n")
 	sb.WriteString("}\n\n")
-	
+
 	sb.WriteString("func ensureHMRGlobals() {\n")
 	sb.WriteString("\tif js.Global().Get(\"__galaxyWasmModules\").IsUndefined() {\n")
 	sb.WriteString("\t\tjs.Global().Set(\"__galaxyWasmModules\", js.Global().Get(\"Object\").New())\n")
@@ -376,7 +391,7 @@ func injectHMRHelpers(script, moduleID string) string {
 	sb.WriteString("\t\tjs.Global().Set(\"__galaxyWasmState\", js.Global().Get(\"Object\").New())\n")
 	sb.WriteString("\t}\n")
 	sb.WriteString("}\n\n")
-	
+
 	sb.WriteString(script)
 	return sb.String()
 }
