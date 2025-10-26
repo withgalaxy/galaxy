@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"crypto/sha256"
 	"fmt"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -121,49 +119,40 @@ func runDev(cmd *cobra.Command, args []string) error {
 									} else {
 										srv.HMRServer.BroadcastReload()
 									}
-								} else if diff.CanHotSwapStyles() {
-									// Style-only change - don't rebuild codegen, just hot swap CSS
-									content, _ := os.ReadFile(event.Name)
-									comp, _ := parser.Parse(string(content))
-									if comp != nil && len(comp.Styles) > 0 {
-										var combined strings.Builder
-										relPath, _ := filepath.Rel(filepath.Dir(pagesDir), event.Name)
-										for _, style := range comp.Styles {
-											cssContent := style.Content
-											if srv.Bundler.PluginManager != nil {
-												transformed, err := srv.Bundler.PluginManager.TransformCSS(cssContent, relPath)
-												if err == nil {
-													cssContent = transformed
-												}
-											}
-											combined.WriteString(cssContent)
-											combined.WriteString("\n")
+								} else {
+									needsCodegenRebuild := false
+									hasStyleChange := false
+									hasTemplateChange := false
+									hasWasmChange := false
+
+									if diff.StylesChanged {
+										hasStyleChange = true
+										needsCodegenRebuild = true
+									}
+
+									if diff.ScriptsChanged || diff.FrontmatterChanged {
+										hasWasmChange = true
+										needsCodegenRebuild = true
+									}
+
+									if diff.TemplateChanged {
+										hasTemplateChange = true
+										needsCodegenRebuild = true
+									}
+
+									if needsCodegenRebuild && !isComponent && isUnderDir(event.Name, pagesDir) {
+										changeTypes := ""
+										if hasStyleChange {
+											changeTypes += "style,"
 										}
-										hash := fmt.Sprintf("%x", sha256.Sum256([]byte(combined.String())))[:8]
-										srv.HMRServer.BroadcastStyleUpdate(event.Name, combined.String(), hash)
-										if !verbose && !silent {
-											fmt.Printf("🎨 Styles updated (hot swap)\n")
+										if hasTemplateChange {
+											changeTypes += "template,"
 										}
-									}
-									// Also rebuild codegen for pages to update bundled CSS
-									if !isComponent && isUnderDir(event.Name, pagesDir) {
-										srv.ScheduleCodegenRebuild(event.Name)
-									}
-								} else if diff.NeedsFullReload() {
-									// Script/frontmatter change - rebuild codegen first, then broadcast WASM reload
-									if !verbose && !silent {
-										fmt.Printf("📦 WASM change detected\n")
-									}
-									// Rebuild codegen for pages (but mark as wasm-only to avoid full reload)
-									// WASM reload will be broadcast after rebuild completes with correct paths
-									if !isComponent && isUnderDir(event.Name, pagesDir) {
-										srv.ScheduleCodegenRebuildWithType(event.Name, "wasm")
-									}
-								} else if diff.TemplateChanged {
-									// Template-only change - rebuild codegen
-									srv.HMRServer.BroadcastTemplateUpdate(event.Name)
-									if !isComponent && isUnderDir(event.Name, pagesDir) {
-										srv.ScheduleCodegenRebuild(event.Name)
+										if hasWasmChange {
+											changeTypes += "wasm,"
+										}
+										changeTypes = strings.TrimSuffix(changeTypes, ",")
+										srv.ScheduleCodegenRebuildWithType(event.Name, changeTypes)
 									}
 								}
 							}

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,23 +16,21 @@ import (
 	"sync"
 	"time"
 
-	"encoding/json"
 	"github.com/cameron-webmatter/galaxy/internal/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/codegen"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
+	"github.com/cameron-webmatter/galaxy/pkg/config"
 	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
 	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/cameron-webmatter/galaxy/pkg/hmr"
 	"github.com/cameron-webmatter/galaxy/pkg/lifecycle"
 	"github.com/cameron-webmatter/galaxy/pkg/middleware"
 	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/cameron-webmatter/galaxy/pkg/plugins"
+	"github.com/cameron-webmatter/galaxy/pkg/plugins/tailwind"
 	"github.com/cameron-webmatter/galaxy/pkg/router"
 	"github.com/cameron-webmatter/galaxy/pkg/ssr"
 	"github.com/cameron-webmatter/galaxy/pkg/template"
-
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	"github.com/cameron-webmatter/galaxy/pkg/hmr"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins/tailwind"
 )
 
 type DevServer struct {
@@ -58,13 +58,14 @@ type DevServer struct {
 	ChangeTracker      *hmr.ChangeTracker
 	ComponentTracker   *hmr.ComponentTracker
 
-	codegenServerPort int
-	codegenReady      bool
-	codegenRebuildMu  sync.Mutex
-	rebuildTimer      *time.Timer
-	pendingRebuilds   map[string]bool
-	rebuildType       string
-	lastWasmAssets    map[string][]assets.WasmAsset
+	codegenServerPort  int
+	codegenReady       bool
+	codegenRebuildMu   sync.Mutex
+	rebuildTimer       *time.Timer
+	pendingRebuilds    map[string]bool
+	rebuildType        string
+	lastWasmAssets     map[string][]assets.WasmAsset
+	pendingHMRMessages map[string][]hmr.Message
 }
 
 func NewDevServer(cfg *config.Config, rootDir, pagesDir, publicDir string, port int, verbose bool) *DevServer {
@@ -100,12 +101,13 @@ func NewDevServer(cfg *config.Config, rootDir, pagesDir, publicDir string, port 
 		MiddlewareCompiler: middleware.NewCompiler(rootDir, ".galaxy/middleware"),
 		Verbose:            verbose,
 
-		UseCodegen:      useCodegen,
-		PageCache:       NewPageCache(),
-		PluginCompiler:  NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
-		PluginManager:   pluginMgr,
-		pendingRebuilds: make(map[string]bool),
-		lastWasmAssets:  make(map[string][]assets.WasmAsset),
+		UseCodegen:         useCodegen,
+		PageCache:          NewPageCache(),
+		PluginCompiler:     NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
+		PluginManager:      pluginMgr,
+		pendingRebuilds:    make(map[string]bool),
+		lastWasmAssets:     make(map[string][]assets.WasmAsset),
+		pendingHMRMessages: make(map[string][]hmr.Message),
 	}
 
 	srv.ChangeTracker = hmr.NewChangeTracker()
@@ -580,6 +582,74 @@ func (s *DevServer) broadcastWasmReloadFromManifest(filesToRebuild []string) {
 	}
 }
 
+func (s *DevServer) broadcastHMRUpdates(filesToRebuild []string) {
+	if s.rebuildType == "" {
+		s.HMRServer.BroadcastReload()
+		return
+	}
+
+	changeTypes := strings.Split(s.rebuildType, ",")
+	hasStyle := false
+	hasTemplate := false
+	hasWasm := false
+
+	for _, ct := range changeTypes {
+		switch ct {
+		case "style":
+			hasStyle = true
+		case "template":
+			hasTemplate = true
+		case "wasm":
+			hasWasm = true
+		}
+	}
+
+	// Broadcast updates in order: style -> template -> wasm
+	for _, filePath := range filesToRebuild {
+		if hasStyle {
+			s.broadcastStyleUpdateFromFile(filePath)
+			time.Sleep(50 * time.Millisecond) // Small delay to ensure message is processed
+		}
+		if hasTemplate {
+			s.HMRServer.BroadcastTemplateUpdate(filePath)
+			time.Sleep(50 * time.Millisecond) // Small delay to ensure message is processed
+		}
+		if hasWasm {
+			s.broadcastWasmReloadFromManifest([]string{filePath})
+		}
+	}
+}
+
+func (s *DevServer) broadcastStyleUpdateFromFile(filePath string) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return
+	}
+
+	comp, err := parser.Parse(string(content))
+	if err != nil {
+		return
+	}
+
+	var combined strings.Builder
+	relPath, _ := filepath.Rel(filepath.Dir(s.PagesDir), filePath)
+	for _, style := range comp.Styles {
+		cssContent := style.Content
+		if s.PluginManager != nil {
+			transformed, err := s.PluginManager.TransformCSS(cssContent, relPath)
+			if err == nil {
+				cssContent = transformed
+			}
+		}
+		combined.WriteString(cssContent)
+		combined.WriteString("\n")
+	}
+
+	cssContent := combined.String()
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(cssContent)))[:8]
+	s.HMRServer.BroadcastStyleUpdate(filePath, cssContent, hash)
+}
+
 func (s *DevServer) Shutdown() {
 	if s.codegenServerCmd != nil && s.codegenServerCmd.Process != nil {
 		s.codegenServerCmd.Process.Kill()
@@ -704,13 +774,8 @@ func (s *DevServer) executeCodegenRebuild() {
 				fmt.Printf("✅ Codegen rebuilt in %dms\n", duration.Milliseconds())
 
 				if s.HMRServer != nil {
-					if s.rebuildType == "wasm" {
-						// Broadcast WASM reload with updated asset info from manifest
-						s.broadcastWasmReloadFromManifest(filesToRebuild)
-					} else {
-						// Full reload for other change types
-						s.HMRServer.BroadcastReload()
-					}
+					// Broadcast HMR updates based on what changed
+					s.broadcastHMRUpdates(filesToRebuild)
 				}
 
 				// Reset rebuild type

@@ -99,7 +99,7 @@
           break;
         
         case 'style-update':
-          this.updateStyles(msg.content, msg.hash);
+          await this.updateStyles(msg.content, msg.hash);
           break;
         
         case 'script-reload':
@@ -211,14 +211,8 @@
     async handleWasmReload(msg) {
       const moduleId = msg.moduleId || msg.path;
       
-      console.log('[HMR DEBUG] WASM reload message received:', msg);
-      console.log('[HMR DEBUG] Extracted moduleId:', moduleId);
-      console.log('[HMR DEBUG] Available accept handlers:', Object.keys(window.__galaxyWasmAcceptHandlers || {}));
-      console.log('[HMR DEBUG] Handler exists?', !!(window.__galaxyWasmAcceptHandlers && window.__galaxyWasmAcceptHandlers[moduleId]));
-      
       if (window.__galaxyWasmAcceptHandlers && window.__galaxyWasmAcceptHandlers[moduleId]) {
         this.log(`Hot reloading WASM module: ${moduleId}`, 'info');
-        console.log('[HMR DEBUG] Calling loadWasmModule with:', {moduleId, path: msg.path, hash: msg.hash});
         try {
           await window.loadWasmModule(moduleId, msg.path, msg.hash, true);
           
@@ -228,33 +222,37 @@
           
           this.log('WASM module reloaded ✨', 'success');
           this.showToast('WASM updated');
-          console.log('[HMR DEBUG] WASM reload successful!');
         } catch (e) {
           this.log('WASM reload failed', 'error', e);
-          console.error('[HMR DEBUG] WASM reload error:', e);
           window.location.reload();
         }
       } else {
-        console.log('[HMR DEBUG] No accept handler found, falling back to full reload');
         this.log('WASM module cannot hot reload, full reload', 'info');
         window.location.reload();
       }
     }
 
     updateStyles(css, hash) {
-      const styleId = `hmr-style-${hash}`;
-      let styleEl = document.getElementById(styleId);
+      // Remove all old HMR style tags
+      const oldStyles = document.querySelectorAll('style[id^="hmr-style-"]');
+      oldStyles.forEach(s => s.remove());
       
-      if (!styleEl) {
-        const oldStyles = document.querySelectorAll('style[id^="hmr-style-"]');
-        oldStyles.forEach(s => s.remove());
-        
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        document.head.appendChild(styleEl);
+      // If CSS is empty, we're done (styles were removed)
+      if (!css || css.trim() === '') {
+        this.log('Styles removed ✨', 'success');
+        this.showToast('Styles removed');
+        if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
+          window.__galaxyHmr.hideError();
+        }
+        return;
       }
       
+      // Create new style tag with updated CSS
+      const styleId = `hmr-style-${hash}`;
+      const styleEl = document.createElement('style');
+      styleEl.id = styleId;
       styleEl.textContent = css;
+      document.head.appendChild(styleEl);
       
       if (window.__galaxyHmr && window.__galaxyHmr.hideError) {
         window.__galaxyHmr.hideError();
