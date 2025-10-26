@@ -471,7 +471,6 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 
 	// Load .env and pass to codegen server
 	envVars := os.Environ()
-	envVars = append(envVars, fmt.Sprintf("PORT=%d", s.codegenServerPort))
 
 	envPath := filepath.Join(s.RootDir, ".env")
 	if data, err := os.ReadFile(envPath); err == nil {
@@ -479,10 +478,16 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line != "" && !strings.HasPrefix(line, "#") && strings.Contains(line, "=") {
-				envVars = append(envVars, line)
+				// Skip PORT from .env - we'll set it ourselves
+				if !strings.HasPrefix(line, "PORT=") {
+					envVars = append(envVars, line)
+				}
 			}
 		}
 	}
+
+	// Set PORT after loading .env so it doesn't get overridden
+	envVars = append(envVars, fmt.Sprintf("PORT=%d", s.codegenServerPort))
 
 	cmd.Env = envVars
 	cmd.Stdout = os.Stdout
