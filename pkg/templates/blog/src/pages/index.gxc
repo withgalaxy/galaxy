@@ -1,52 +1,67 @@
 ---
+import Layout from "../components/Layout.gxc"
+import PostCard from "../components/PostCard.gxc"
+import BlogList from "../components/BlogList.gxc"
+
+import "github.com/cameron-webmatter/galaxy/pkg/content"
+
 var title = "My Blog"
-var posts = []map[string]string{
-	{"title": "First Post", "slug": "first-post", "date": "2024-01-15"},
-	{"title": "Second Post", "slug": "second-post", "date": "2024-01-20"},
+var subtitle = "Thoughts on Go, web development, and more"
+
+collections := content.NewCollections("./src/content")
+posts, _ := collections.GetCollection("blog")
+
+var publishedPosts = []interface{}{}
+for _, post := range posts {
+	if !post.GetBool("draft") {
+		publishedPosts = append(publishedPosts, post)
+	}
 }
 ---
 
 <Layout title={title}>
 	<main>
-		<h1>📝 {title}</h1>
-		<p>Welcome to my blog built with Galaxy</p>
+		<header class="hero">
+			<h1>📝 {title}</h1>
+			<p>{subtitle}</p>
+		</header>
 
-		<div class="posts">
-			<article galaxy:for={post in posts}>
-				<h2><a href="/blog/{post.slug}">{post.title}</a></h2>
-				<time>{post.date}</time>
-			</article>
-		</div>
+		<BlogList>
+			<div galaxy:for={post in publishedPosts}>
+				<PostCard 
+					slug={post.Slug}
+					title={post.GetString("title")}
+					pubDate={post.GetString("pubDate")}
+					author={post.GetString("author")}
+					tags={post.GetStringSlice("tags")}
+				/>
+			</div>
+		</BlogList>
 	</main>
 </Layout>
 
 <style>
-	main {
-		max-width: 800px;
-		margin: 0 auto;
-		padding: 2rem;
-		font-family: system-ui, sans-serif;
-	}
-	.posts {
-		margin-top: 2rem;
-	}
-	article {
-		padding: 1rem 0;
-		border-bottom: 1px solid #e5e7eb;
-	}
-	h2 {
-		margin: 0;
-		font-size: 1.5rem;
-	}
-	a {
-		color: #2563eb;
-		text-decoration: none;
-	}
-	a:hover {
-		text-decoration: underline;
-	}
-	time {
-		color: #6b7280;
-		font-size: 0.875rem;
-	}
+main {
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 2rem;
+	font-family: system-ui, sans-serif;
+}
+
+.hero {
+	margin-bottom: 3rem;
+	text-align: center;
+}
+
+h1 {
+	margin: 0 0 0.5rem 0;
+	font-size: 3rem;
+	color: #1f2937;
+}
+
+p {
+	color: #6b7280;
+	font-size: 1.125rem;
+	margin: 0;
+}
 </style>

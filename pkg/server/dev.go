@@ -280,6 +280,8 @@ func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		err := s.MiddlewareChain.Execute(mwCtx, func(ctx *middleware.Context) error {
 			if route.IsEndpoint {
 				s.handleEndpoint(route, ctx, params)
+			} else if route.Type == router.RouteMarkdown {
+				s.handleMarkdownPage(route, ctx, params)
 			} else {
 				s.handlePage(route, ctx, params)
 			}
@@ -291,7 +293,11 @@ func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.handlePage(route, mwCtx, params)
+	if route.Type == router.RouteMarkdown {
+		s.handleMarkdownPage(route, mwCtx, params)
+	} else {
+		s.handlePage(route, mwCtx, params)
+	}
 }
 
 func (s *DevServer) handleEndpoint(route *router.Route, mwCtx *middleware.Context, params map[string]string) {
@@ -443,6 +449,51 @@ func (s *DevServer) handlePage(route *router.Route, mwCtx *middleware.Context, p
 
 	mwCtx.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	mwCtx.Response.Write([]byte(rendered))
+}
+
+func (s *DevServer) handleMarkdownPage(route *router.Route, mwCtx *middleware.Context, params map[string]string) {
+	content, err := os.ReadFile(route.FilePath)
+	if err != nil {
+		http.Error(mwCtx.Response, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	doc, err := parser.ParseMarkdownWithYAMLFrontmatter(string(content))
+	if err != nil {
+		http.Error(mwCtx.Response, fmt.Sprintf("Markdown parse error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	html := doc.HTML
+
+	if doc.Layout != "" {
+		layoutPath := filepath.Join(filepath.Dir(s.PagesDir), doc.Layout)
+		if !filepath.IsAbs(doc.Layout) {
+			layoutPath = filepath.Join(filepath.Dir(route.FilePath), doc.Layout)
+		}
+
+		props := make(map[string]interface{})
+		for k, v := range doc.Frontmatter {
+			props[k] = v
+		}
+		props["content"] = doc.HTML
+
+		slots := map[string]string{
+			"default": doc.HTML,
+		}
+
+		s.Compiler.CollectedStyles = nil
+		rendered, err := s.Compiler.Compile(layoutPath, props, slots)
+		if err != nil {
+			http.Error(mwCtx.Response, fmt.Sprintf("Layout compile error: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		html = rendered
+	}
+
+	mwCtx.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	mwCtx.Response.Write([]byte(html))
 }
 
 func (s *DevServer) serveStatic(w http.ResponseWriter, r *http.Request) {

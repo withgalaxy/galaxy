@@ -1,0 +1,60 @@
+---
+---
+
+<article class="post-card">
+	<h2><a href="/blog/{slug}">{title}</a></h2>
+	<div class="meta">
+		<time>{pubDate}</time>
+		<span class="author" galaxy:if={author}>by {author}</span>
+	</div>
+	<div class="tags" galaxy:if={tags}>
+		<span galaxy:for={tag in tags} class="tag">{tag}</span>
+	</div>
+</article>
+
+<style scoped>
+.post-card {
+	padding: 1.5rem 0;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+.post-card:last-child {
+	border-bottom: none;
+}
+
+h2 {
+	margin: 0 0 0.5rem 0;
+	font-size: 1.5rem;
+}
+
+a {
+	color: #1f2937;
+	text-decoration: none;
+}
+
+a:hover {
+	color: #2563eb;
+}
+
+.meta {
+	display: flex;
+	gap: 1rem;
+	color: #6b7280;
+	font-size: 0.875rem;
+	margin-bottom: 0.75rem;
+}
+
+.tags {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.tag {
+	background: #e5e7eb;
+	padding: 0.25rem 0.75rem;
+	border-radius: 1rem;
+	font-size: 0.75rem;
+	color: #374151;
+}
+</style>

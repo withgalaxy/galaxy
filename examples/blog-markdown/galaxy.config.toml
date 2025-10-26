@@ -1,14 +1,14 @@
-site = ""
+site = "https://blog.example.com"
 base = "/"
 outDir = "./dist"
-packageManager = "{{.PackageManager}}"
+srcDir = "./src"
+
+[output]
+type = "static"
 
 [server]
 port = 4322
 host = "localhost"
-
-[output]
-type = "static"
 
 [markdown]
 syntaxHighlight = "monokai"

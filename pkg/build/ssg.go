@@ -94,6 +94,10 @@ func (b *SSGBuilder) Build() error {
 		return fmt.Errorf("codegen build: %w", err)
 	}
 
+	if err := b.BuildMarkdownRoutes(); err != nil {
+		return fmt.Errorf("build markdown routes: %w", err)
+	}
+
 	if err := b.copyPublicAssets(); err != nil {
 		return fmt.Errorf("copy assets: %w", err)
 	}

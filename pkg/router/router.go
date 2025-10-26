@@ -17,6 +17,7 @@ const (
 	RouteDynamic
 	RouteCatchAll
 	RouteEndpoint
+	RouteMarkdown
 )
 
 type Route struct {
@@ -54,6 +55,8 @@ func (r *Router) createRoute(relPath, fullPath string) *Route {
 	pattern := relPath
 	pattern = strings.TrimSuffix(pattern, ".gxc")
 	pattern = strings.TrimSuffix(pattern, ".go")
+	pattern = strings.TrimSuffix(pattern, ".md")
+	pattern = strings.TrimSuffix(pattern, ".mdx")
 
 	// Strip HTTP method suffixes for endpoints
 	for _, method := range []string{"/GET", "/POST", "/PUT", "/DELETE", "/PATCH"} {
@@ -184,8 +187,9 @@ func (r *Router) discover() error {
 
 		isGxc := strings.HasSuffix(path, ".gxc")
 		isGoEndpoint := strings.HasSuffix(path, ".go")
+		isMarkdown := strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".mdx")
 
-		if !isGxc && !isGoEndpoint {
+		if !isGxc && !isGoEndpoint && !isMarkdown {
 			return nil
 		}
 
@@ -198,6 +202,8 @@ func (r *Router) discover() error {
 		if isGoEndpoint {
 			route.IsEndpoint = true
 			route.Type = RouteEndpoint
+		} else if isMarkdown {
+			route.Type = RouteMarkdown
 		}
 		r.Routes = append(r.Routes, route)
 

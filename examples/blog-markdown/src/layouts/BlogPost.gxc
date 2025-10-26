@@ -1,0 +1,56 @@
+---
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{title}</title>
+</head>
+<body>
+	<article>
+		<header>
+			<h1>{title}</h1>
+			<time>{pubDate}</time>
+		</header>
+		<slot />
+	</article>
+</body>
+</html>
+
+<style>
+body {
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 2rem;
+	font-family: system-ui, sans-serif;
+	line-height: 1.6;
+}
+
+article header {
+	margin-bottom: 2rem;
+	border-bottom: 2px solid #e5e7eb;
+	padding-bottom: 1rem;
+}
+
+h1 {
+	margin: 0 0 0.5rem 0;
+	font-size: 2.5rem;
+}
+
+time {
+	color: #6b7280;
+}
+
+pre {
+	background: #2d2d2d;
+	padding: 1rem;
+	border-radius: 8px;
+	overflow-x: auto;
+}
+
+code {
+	font-family: 'Courier New', monospace;
+}
+</style>

@@ -28,6 +28,8 @@ type Config struct {
 	Adapter        AdapterConfig   `toml:"adapter"`
 	Lifecycle      LifecycleConfig `toml:"lifecycle"`
 	Plugins        []PluginConfig  `toml:"plugins"`
+	Markdown       MarkdownConfig  `toml:"markdown"`
+	Content        ContentConfig   `toml:"content"`
 }
 
 type OutputConfig struct {
@@ -55,6 +57,17 @@ type PluginConfig struct {
 	Config map[string]interface{} `toml:"config"`
 }
 
+type MarkdownConfig struct {
+	SyntaxHighlight string   `toml:"syntaxHighlight"`
+	RemarkPlugins   []string `toml:"remarkPlugins"`
+	RehypePlugins   []string `toml:"rehypePlugins"`
+}
+
+type ContentConfig struct {
+	Collections bool   `toml:"collections"`
+	ContentDir  string `toml:"contentDir"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Site:           "",
@@ -77,6 +90,15 @@ func DefaultConfig() *Config {
 			Enabled:         true,
 			StartupTimeout:  30,
 			ShutdownTimeout: 10,
+		},
+		Markdown: MarkdownConfig{
+			SyntaxHighlight: "monokai",
+			RemarkPlugins:   []string{},
+			RehypePlugins:   []string{},
+		},
+		Content: ContentConfig{
+			Collections: true,
+			ContentDir:  "./src/content",
 		},
 	}
 }

@@ -1,0 +1,125 @@
+---
+---
+
+<Layout title={title}>
+	<article class="blog-post">
+		<header>
+			<h1>{title}</h1>
+			<div class="meta">
+				<time>{pubDate}</time>
+				<span class="author">by {author}</span>
+			</div>
+			<div class="tags" galaxy:if={tags}>
+				<span galaxy:for={tag in tags} class="tag">{tag}</span>
+			</div>
+		</header>
+		<div class="content">
+			<slot />
+		</div>
+	</article>
+</Layout>
+
+<style scoped>
+.blog-post {
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 2rem;
+}
+
+header {
+	margin-bottom: 2rem;
+	padding-bottom: 1.5rem;
+	border-bottom: 2px solid #e5e7eb;
+}
+
+h1 {
+	margin: 0 0 1rem 0;
+	font-size: 2.5rem;
+	line-height: 1.2;
+}
+
+.meta {
+	display: flex;
+	gap: 1rem;
+	color: #6b7280;
+	font-size: 0.875rem;
+	margin-bottom: 1rem;
+}
+
+.tags {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.tag {
+	background: #e5e7eb;
+	padding: 0.25rem 0.75rem;
+	border-radius: 1rem;
+	font-size: 0.75rem;
+	color: #374151;
+}
+
+.content {
+	line-height: 1.7;
+	font-size: 1.125rem;
+}
+
+.content h2 {
+	margin-top: 2rem;
+	margin-bottom: 1rem;
+	font-size: 1.75rem;
+}
+
+.content h3 {
+	margin-top: 1.5rem;
+	margin-bottom: 0.75rem;
+	font-size: 1.25rem;
+}
+
+.content p {
+	margin-bottom: 1rem;
+}
+
+.content pre {
+	background: #2d2d2d;
+	padding: 1rem;
+	border-radius: 8px;
+	overflow-x: auto;
+	margin: 1.5rem 0;
+}
+
+.content code {
+	font-family: 'Courier New', monospace;
+	font-size: 0.9em;
+}
+
+.content :not(pre) > code {
+	background: #f3f4f6;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	color: #e83e8c;
+}
+
+.content a {
+	color: #2563eb;
+	text-decoration: underline;
+}
+
+.content blockquote {
+	border-left: 4px solid #e5e7eb;
+	padding-left: 1rem;
+	margin: 1.5rem 0;
+	color: #6b7280;
+	font-style: italic;
+}
+
+.content ul, .content ol {
+	margin: 1rem 0;
+	padding-left: 2rem;
+}
+
+.content li {
+	margin: 0.5rem 0;
+}
+</style>

@@ -1,0 +1,14 @@
+---
+---
+
+<div class="blog-list">
+	<slot />
+</div>
+
+<style scoped>
+.blog-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2rem;
+}
+</style>

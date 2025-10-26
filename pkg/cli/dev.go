@@ -100,10 +100,14 @@ func runDev(cmd *cobra.Command, args []string) error {
 						}
 					}
 
-					if filepath.Ext(event.Name) == ".gxc" && isUnderDir(event.Name, srcDir) {
+					ext := filepath.Ext(event.Name)
+					isMarkdown := ext == ".md" || ext == ".mdx"
+					isGalaxy := ext == ".gxc"
+
+					if (isGalaxy || isMarkdown) && isUnderDir(event.Name, srcDir) {
 						srv.Compiler.ClearCache()
 
-						isComponent := !isUnderDir(event.Name, pagesDir)
+						isComponent := !isUnderDir(event.Name, pagesDir) && !isMarkdown
 
 						if srv.ChangeTracker != nil && srv.HMRServer != nil {
 							diff, err := srv.ChangeTracker.DetectChange(event.Name)
@@ -161,6 +165,13 @@ func runDev(cmd *cobra.Command, args []string) error {
 						if isUnderDir(event.Name, pagesDir) && event.Op&(fsnotify.Create|fsnotify.Remove) != 0 {
 							if err := srv.ReloadRoutes(); err != nil && !silent {
 								fmt.Printf("⚠ Failed to reload routes: %v\n", err)
+							}
+						}
+
+						if isMarkdown && srv.HMRServer != nil {
+							srv.HMRServer.BroadcastReload()
+							if !verbose && !silent {
+								fmt.Printf("📄 Markdown updated: %s\n", filepath.Base(event.Name))
 							}
 						}
 					}
