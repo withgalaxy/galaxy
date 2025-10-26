@@ -1,0 +1,23 @@
+🔨 Building for production (static mode)...
+
+Error: build failed: codegen build: compile: exit status 1
+main.go:8:10: import path must be a string
+
+Usage:
+  galaxy build [flags]
+
+Flags:
+      --force           clear cache and rebuild
+  -h, --help            help for build
+      --mode string     build mode (default "production")
+      --outDir string   output directory (default "./dist")
+
+Global Flags:
+      --config string   config file path
+      --root string     project root directory
+      --silent          disable all logging
+      --verbose         enable verbose logging
+
+build failed: codegen build: compile: exit status 1
+main.go:8:10: import path must be a string
+

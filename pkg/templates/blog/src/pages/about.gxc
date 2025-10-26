@@ -1,6 +1,4 @@
 ---
-import Layout from "../components/Layout.gxc"
-
 var title = "About"
 ---
 

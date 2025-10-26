@@ -1,6 +1,4 @@
 ---
-import Layout from "../components/Layout.gxc"
-
 import "github.com/cameron-webmatter/galaxy/pkg/content"
 
 var title = "My Blog"
