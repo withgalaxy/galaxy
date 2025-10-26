@@ -61,7 +61,7 @@ type DevServer struct {
 func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *DevServer {
 	srcDir := filepath.Dir(pagesDir)
 
-	useCodegen := os.Getenv("GALAXY_USE_CODEGEN") != "false"
+	useCodegen := true
 
 	galaxyPath := "../../../galaxy"
 	if gp := os.Getenv("GALAXY_PATH"); gp != "" {
