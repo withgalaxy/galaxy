@@ -41,6 +41,10 @@ func (b *SSGCodegenBuilder) Build() error {
 			continue
 		}
 
+		if route.Type == router.RouteMarkdown {
+			continue
+		}
+
 		content, err := os.ReadFile(route.FilePath)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", route.FilePath, err)
@@ -115,8 +119,12 @@ func (b *SSGCodegenBuilder) generateMain(handlers []*GeneratedHandler, routes []
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	
+	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/cameron-webmatter/galaxy/pkg/template"
 	%s
 	"%s/runtime"
 )
@@ -129,12 +137,15 @@ func main() {
 	fmt.Println("✓ Done")
 }
 
-func renderPage(pattern, outPath string, handler func(http.ResponseWriter, *http.Request, map[string]string)) {
+func renderPage(pattern, outPath string, handler func(http.ResponseWriter, *http.Request, map[string]string, map[string]interface{})) {
 	w := &responseWriter{body: make([]byte, 0)}
-	r := &http.Request{}
+	r := &http.Request{
+		URL: &url.URL{Path: pattern},
+	}
 	params := make(map[string]string)
+	locals := make(map[string]interface{})
 	
-	handler(w, r, params)
+	handler(w, r, params, locals)
 	
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 		panic(err)

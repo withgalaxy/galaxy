@@ -51,6 +51,10 @@ func (g *HandlerGenerator) extractImports() []string {
 			continue
 		}
 
+		if strings.Contains(line, " from ") {
+			continue
+		}
+
 		line = strings.TrimPrefix(line, "import ")
 		line = strings.TrimSpace(line)
 

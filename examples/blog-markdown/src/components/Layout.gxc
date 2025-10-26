@@ -1,0 +1,41 @@
+---
+var title string
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{title}</title>
+</head>
+<body>
+	<nav>
+		<a href="/">Home</a>
+		<a href="/about">About</a>
+	</nav>
+	<slot />
+	<footer>
+		<p>Built with Galaxy 🚀</p>
+	</footer>
+</body>
+</html>
+
+<style>
+	nav {
+		padding: 1rem 2rem;
+		border-bottom: 1px solid #e5e7eb;
+	}
+	nav a {
+		margin-right: 1rem;
+		color: #2563eb;
+		text-decoration: none;
+	}
+	footer {
+		margin-top: 4rem;
+		padding: 2rem;
+		text-align: center;
+		color: #6b7280;
+		border-top: 1px solid #e5e7eb;
+	}
+</style>

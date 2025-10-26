@@ -1,0 +1,79 @@
+---
+import Layout from "../components/Layout.gxc"
+import PostCard from "../components/PostCard.gxc"
+import BlogList from "../components/BlogList.gxc"
+
+var title = "My Blog"
+var subtitle = "Thoughts on Go, web development, and more"
+
+var posts = []map[string]interface{}{
+	{
+		"slug": "getting-started-with-galaxy",
+		"title": "Getting Started with Galaxy",
+		"pubDate": "2024-01-15",
+		"author": "Galaxy Team",
+		"tags": []string{"getting-started", "tutorial", "go"},
+	},
+	{
+		"slug": "advanced-routing",
+		"title": "Advanced Routing in Galaxy",
+		"pubDate": "2024-01-20",
+		"author": "Galaxy Team",
+		"tags": []string{"routing", "advanced", "tutorial"},
+	},
+	{
+		"slug": "markdown-power",
+		"title": "The Power of Markdown Content",
+		"pubDate": "2024-01-25",
+		"author": "Galaxy Team",
+		"tags": []string{"markdown", "content", "mdx"},
+	},
+}
+---
+
+<Layout title={title}>
+	<main>
+		<header class="hero">
+			<h1>📝 {title}</h1>
+			<p>{subtitle}</p>
+		</header>
+
+		<BlogList>
+			<div galaxy:for={post in posts}>
+				<PostCard 
+					slug={post["slug"]}
+					title={post["title"]}
+					pubDate={post["pubDate"]}
+					author={post["author"]}
+					tags={post["tags"]}
+				/>
+			</div>
+		</BlogList>
+	</main>
+</Layout>
+
+<style>
+main {
+	max-width: 800px;
+	margin: 0 auto;
+	padding: 2rem;
+	font-family: system-ui, sans-serif;
+}
+
+.hero {
+	margin-bottom: 3rem;
+	text-align: center;
+}
+
+h1 {
+	margin: 0 0 0.5rem 0;
+	font-size: 3rem;
+	color: #1f2937;
+}
+
+p {
+	color: #6b7280;
+	font-size: 1.125rem;
+	margin: 0;
+}
+</style>

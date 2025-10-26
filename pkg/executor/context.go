@@ -100,7 +100,9 @@ func extractImports(code string) (imports string, rest string) {
 				inImportBlock = false
 			}
 		} else if strings.HasPrefix(trimmed, "import ") {
-			importLines = append(importLines, line)
+			if !strings.Contains(line, " from ") {
+				importLines = append(importLines, line)
+			}
 		} else {
 			codeLines = append(codeLines, line)
 		}

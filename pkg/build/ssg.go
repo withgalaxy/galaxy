@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/cameron-webmatter/galaxy/internal/assets"
-	"github.com/cameron-webmatter/galaxy/pkg/codegen"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
 	"github.com/cameron-webmatter/galaxy/pkg/config"
 	"github.com/cameron-webmatter/galaxy/pkg/executor"
@@ -84,18 +83,23 @@ func (b *SSGBuilder) Build() error {
 		return fmt.Errorf("create output: %w", err)
 	}
 
-	moduleName, err := detectModuleName()
-	if err != nil {
-		moduleName = "generated-ssg"
-	}
+	resolver := compiler.NewComponentResolver(b.SrcDir, nil)
+	b.Compiler.SetResolver(resolver)
 
-	codegenBuilder := codegen.NewSSGCodegenBuilder(b.Router.Routes, b.PagesDir, b.OutDir, moduleName)
-	if err := codegenBuilder.Build(); err != nil {
-		return fmt.Errorf("codegen build: %w", err)
-	}
+	for _, route := range b.Router.Routes {
+		if route.IsEndpoint {
+			continue
+		}
 
-	if err := b.BuildMarkdownRoutes(); err != nil {
-		return fmt.Errorf("build markdown routes: %w", err)
+		if route.Type == router.RouteMarkdown {
+			if err := b.buildMarkdownRoute(route); err != nil {
+				return fmt.Errorf("build markdown route %s: %w", route.Pattern, err)
+			}
+		} else {
+			if err := b.buildStaticRoute(route); err != nil {
+				return fmt.Errorf("build static route %s: %w", route.Pattern, err)
+			}
+		}
 	}
 
 	if err := b.copyPublicAssets(); err != nil {
