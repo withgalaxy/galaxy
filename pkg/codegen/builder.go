@@ -482,7 +482,7 @@ func (b *CodegenBuilder) compile(serverDir string) error {
 		return fmt.Errorf("go mod tidy: %w\n%s", err, output)
 	}
 
-	cmd := exec.Command("go", "build", "-o", "server", ".")
+	cmd := exec.Command("go", "build", "-o", "galaxy-codegen-server", ".")
 	cmd.Dir = serverDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {

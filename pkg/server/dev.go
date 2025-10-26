@@ -465,7 +465,7 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 
 	// Start the compiled server from dist/server directory
 	// so it can find _assets, wasm_exec.js, etc.
-	serverBinary := "./server"
+	serverBinary := "./galaxy-codegen-server"
 	cmd := exec.Command(serverBinary)
 	cmd.Dir = filepath.Join(s.RootDir, "dist", "server")
 
