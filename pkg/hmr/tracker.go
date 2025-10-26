@@ -35,7 +35,13 @@ func (t *ChangeTracker) DetectChange(filePath string) (*ComponentDiff, error) {
 	oldComp, exists := t.cache[filePath]
 	if !exists {
 		t.cache[filePath] = newComp
-		diff := ComponentDiff{}
+		// First time seeing this file - treat as full change to trigger update
+		diff := ComponentDiff{
+			TemplateChanged:    true,
+			StylesChanged:      len(newComp.Styles) > 0,
+			ScriptsChanged:     len(newComp.Scripts) > 0,
+			FrontmatterChanged: newComp.Frontmatter != "",
+		}
 		return &diff, nil
 	}
 
