@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -80,7 +81,17 @@ func (b *CodegenBuilder) Build() error {
 			return fmt.Errorf("process components for %s: %w", route.Pattern, err)
 		}
 
+		// Bundle CSS for this page
+		cssPath := ""
+		if len(processedComp.Styles) > 0 {
+			cssPath, err = b.Bundler.BundleStyles(processedComp, route.FilePath)
+			if err != nil {
+				return fmt.Errorf("bundle styles for %s: %w", route.Pattern, err)
+			}
+		}
+
 		gen := NewHandlerGenerator(processedComp, route, b.ModuleName, b.PagesDir)
+		gen.CSSPath = cssPath
 		handler, err := gen.Generate()
 		if err != nil {
 			return fmt.Errorf("generate handler for %s: %w", route.Pattern, err)
@@ -489,4 +500,154 @@ func (b *CodegenBuilder) compile(serverDir string) error {
 		return fmt.Errorf("compile server: %w\n%s", err, output)
 	}
 	return nil
+}
+
+func (b *CodegenBuilder) RebuildPage(changedFilePath string) error {
+	fmt.Printf("  📝 Rebuilding page: %s\n", filepath.Base(changedFilePath))
+	serverDir := filepath.Join(b.OutDir, "server")
+
+	// Find the route for this file
+	var changedRoute *router.Route
+	for _, route := range b.Routes {
+		if route.FilePath == changedFilePath {
+			changedRoute = route
+			break
+		}
+	}
+
+	if changedRoute == nil {
+		return fmt.Errorf("no route found for file: %s", changedFilePath)
+	}
+	fmt.Printf("  🎯 Route pattern: %s\n", changedRoute.Pattern)
+
+	// Read and parse the changed file
+	content, err := os.ReadFile(changedFilePath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", changedFilePath, err)
+	}
+
+	comp, err := parser.Parse(string(content))
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", changedFilePath, err)
+	}
+
+	// Process component tags
+	processedComp, err := b.processComponentTags(comp, changedRoute)
+	if err != nil {
+		return fmt.Errorf("process components: %w", err)
+	}
+
+	// Bundle CSS for this page
+	cssPath := ""
+	if len(processedComp.Styles) > 0 {
+		cssPath, err = b.Bundler.BundleStyles(processedComp, changedRoute.FilePath)
+		if err != nil {
+			return fmt.Errorf("bundle styles: %w", err)
+		}
+	}
+
+	// Generate new handler
+	gen := NewHandlerGenerator(processedComp, changedRoute, b.ModuleName, b.PagesDir)
+	gen.CSSPath = cssPath
+	handler, err := gen.Generate()
+	if err != nil {
+		return fmt.Errorf("generate handler: %w", err)
+	}
+
+	// Read existing main.go
+	mainPath := filepath.Join(serverDir, "main.go")
+	mainContent, err := os.ReadFile(mainPath)
+	if err != nil {
+		return fmt.Errorf("read main.go: %w", err)
+	}
+
+	// Replace the handler function in main.go
+	fmt.Printf("  🔄 Replacing handler function: %s\n", handler.FunctionName)
+	updatedMain := replaceHandlerFunction(string(mainContent), handler)
+
+	if updatedMain == string(mainContent) {
+		fmt.Printf("  ⚠️  Warning: main.go was not modified (pattern may not have matched)\n")
+	}
+
+	// Write updated main.go
+	if err := os.WriteFile(mainPath, []byte(updatedMain), 0644); err != nil {
+		return fmt.Errorf("write main.go: %w", err)
+	}
+	fmt.Printf("  💾 Updated main.go\n")
+
+	// Rebuild WASM assets if needed
+	wasmAssets, err := b.Bundler.BundleWasmScripts(comp, changedRoute.FilePath)
+	if err != nil {
+		return fmt.Errorf("bundle wasm: %w", err)
+	}
+
+	if len(wasmAssets) > 0 {
+		if err := b.copyWasmAssets(serverDir); err != nil {
+			return fmt.Errorf("copy wasm assets: %w", err)
+		}
+
+		// Update WASM manifest with new assets
+		if err := b.updateManifestForPage(changedRoute, wasmAssets); err != nil {
+			return fmt.Errorf("update manifest: %w", err)
+		}
+	}
+
+	// Recompile the server (Go's incremental compilation makes this fast)
+	fmt.Printf("  🔨 Recompiling Go binary...\n")
+	if err := b.compile(serverDir); err != nil {
+		return fmt.Errorf("compile: %w", err)
+	}
+	fmt.Printf("  ✅ Page rebuilt successfully\n")
+
+	return nil
+}
+
+func (b *CodegenBuilder) updateManifestForPage(route *router.Route, wasmAssets []assets.WasmAsset) error {
+	// Load existing manifest
+	var manifest *wasm.WasmManifest
+	if data, err := os.ReadFile(b.ManifestPath); err == nil {
+		manifest = &wasm.WasmManifest{}
+		if err := json.Unmarshal(data, manifest); err != nil {
+			manifest = wasm.NewManifest()
+		}
+	} else {
+		manifest = wasm.NewManifest()
+	}
+
+	// Update the page's assets
+	pageAssets := wasm.WasmPageAssets{}
+	for _, asset := range wasmAssets {
+		hash := extractHash(asset.LoaderPath)
+		pageAssets.WasmModules = append(pageAssets.WasmModules, wasm.WasmModule{
+			Hash:       hash,
+			WasmPath:   asset.WasmPath,
+			LoaderPath: asset.LoaderPath,
+		})
+	}
+
+	relPath, err := filepath.Rel(b.PagesDir, route.FilePath)
+	if err != nil {
+		relPath = route.FilePath
+	}
+	manifestKey := "pages/" + relPath
+	manifest.Assets[manifestKey] = pageAssets
+
+	// Save updated manifest
+	return manifest.Save(b.ManifestPath)
+}
+
+func replaceHandlerFunction(mainContent string, handler *GeneratedHandler) string {
+	funcName := handler.FunctionName
+
+	// Pattern matches:
+	// 1. func HandleXxx(...) { ... }
+	// 2. Followed by: const templateHandleXxx = `...`
+	// The (?s) makes . match newlines
+	funcPattern := regexp.MustCompile(
+		`(?s)func ` + regexp.QuoteMeta(funcName) + `\([^)]+\) \{.*?\n\}\n\nconst template` +
+			regexp.QuoteMeta(funcName) + ` = ` + "`" + `.*?` + "`",
+	)
+
+	// Replace with new handler code
+	return funcPattern.ReplaceAllString(mainContent, handler.Code)
 }

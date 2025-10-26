@@ -150,7 +150,8 @@ func (b *Bundler) BundleWasmScripts(comp *parser.Component, pagePath string) ([]
 			}
 		}
 
-		loaderContent := wasm.GenerateLoader("/_assets/wasm/" + wasmFilename)
+		pageId := filepath.Base(pagePath)
+		loaderContent := wasm.GenerateLoader("/_assets/wasm/"+wasmFilename, pageId)
 		loaderPath := filepath.Join(b.OutDir, "_assets", loaderFilename)
 		if err := os.WriteFile(loaderPath, []byte(loaderContent), 0644); err != nil {
 			return nil, err

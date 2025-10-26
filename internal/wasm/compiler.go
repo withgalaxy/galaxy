@@ -208,11 +208,22 @@ func prepareScript(script, hash string, useTinyGo bool) (string, error) {
 			final.WriteString("\n\n")
 		}
 
-		final.WriteString("func main() {\n")
+		// Create a rerunnable function for HMR
+		final.WriteString("func __galaxyRun() {\n")
 		if execCode != "" {
 			final.WriteString(indentCode(execCode))
 			final.WriteString("\n")
 		}
+		final.WriteString("}\n\n")
+
+		final.WriteString("func main() {\n")
+		final.WriteString("\t__galaxyRun()\n")
+		final.WriteString("\t\n")
+		final.WriteString("\t// Auto-register HMR accept handler if not manually registered\n")
+		final.WriteString("\tif !__hmrManuallyRegistered {\n")
+		final.WriteString("\t\thmrAccept(__galaxyRun)\n")
+		final.WriteString("\t}\n")
+		final.WriteString("\t\n")
 		final.WriteString("\tselect {}\n")
 		final.WriteString("}\n")
 	} else {
@@ -334,9 +345,11 @@ func injectHMRHelpers(script, moduleID string) string {
 	var sb strings.Builder
 
 	sb.WriteString("// HMR helpers (auto-injected)\n")
-	sb.WriteString(fmt.Sprintf("var __hmrModuleID = %q\n\n", moduleID))
+	sb.WriteString(fmt.Sprintf("var __hmrModuleID = %q\n", moduleID))
+	sb.WriteString("var __hmrManuallyRegistered = false\n\n")
 
 	sb.WriteString("func hmrAccept(callback func()) {\n")
+	sb.WriteString("\t__hmrManuallyRegistered = true\n")
 	sb.WriteString("\tensureHMRGlobals()\n")
 	sb.WriteString("\thandlers := js.Global().Get(\"__galaxyWasmAcceptHandlers\")\n")
 	sb.WriteString("\tcb := js.FuncOf(func(this js.Value, args []js.Value) interface{} {\n")

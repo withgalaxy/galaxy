@@ -10,6 +10,7 @@ type HandlerGenerator struct {
 	Route      *router.Route
 	ModuleName string
 	BaseDir    string
+	CSSPath    string
 }
 
 type GeneratedHandler struct {

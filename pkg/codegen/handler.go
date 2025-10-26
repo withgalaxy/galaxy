@@ -132,6 +132,9 @@ func (g *HandlerGenerator) generateHandlerFunc(funcName, frontmatterCode string,
 		return
 	}
 	
+	// Inject CSS if present
+	html = runtime.InjectCSS(html, %q)
+	
 	// Inject WASM assets if present
 	html = runtime.InjectWasmAssets(html, r.URL.Path)
 	
@@ -139,7 +142,7 @@ func (g *HandlerGenerator) generateHandlerFunc(funcName, frontmatterCode string,
 }
 
 const template%s = %s
-`, funcName, paramExtraction, frontmatterCode, g.generateUseStatements(), g.generateVarAssignments(), funcName, funcName, template)
+`, funcName, paramExtraction, frontmatterCode, g.generateUseStatements(), g.generateVarAssignments(), funcName, g.CSSPath, funcName, template)
 }
 
 func (g *HandlerGenerator) getRoutePath() string {

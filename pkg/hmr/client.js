@@ -211,8 +211,14 @@
     async handleWasmReload(msg) {
       const moduleId = msg.moduleId || msg.path;
       
+      console.log('[HMR DEBUG] WASM reload message received:', msg);
+      console.log('[HMR DEBUG] Extracted moduleId:', moduleId);
+      console.log('[HMR DEBUG] Available accept handlers:', Object.keys(window.__galaxyWasmAcceptHandlers || {}));
+      console.log('[HMR DEBUG] Handler exists?', !!(window.__galaxyWasmAcceptHandlers && window.__galaxyWasmAcceptHandlers[moduleId]));
+      
       if (window.__galaxyWasmAcceptHandlers && window.__galaxyWasmAcceptHandlers[moduleId]) {
         this.log(`Hot reloading WASM module: ${moduleId}`, 'info');
+        console.log('[HMR DEBUG] Calling loadWasmModule with:', {moduleId, path: msg.path, hash: msg.hash});
         try {
           await window.loadWasmModule(moduleId, msg.path, msg.hash, true);
           
@@ -222,11 +228,14 @@
           
           this.log('WASM module reloaded ✨', 'success');
           this.showToast('WASM updated');
+          console.log('[HMR DEBUG] WASM reload successful!');
         } catch (e) {
           this.log('WASM reload failed', 'error', e);
+          console.error('[HMR DEBUG] WASM reload error:', e);
           window.location.reload();
         }
       } else {
+        console.log('[HMR DEBUG] No accept handler found, falling back to full reload');
         this.log('WASM module cannot hot reload, full reload', 'info');
         window.location.reload();
       }

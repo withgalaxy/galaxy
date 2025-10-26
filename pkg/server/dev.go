@@ -27,7 +27,10 @@ import (
 	"github.com/cameron-webmatter/galaxy/pkg/ssr"
 	"github.com/cameron-webmatter/galaxy/pkg/template"
 
+	"github.com/cameron-webmatter/galaxy/pkg/config"
 	"github.com/cameron-webmatter/galaxy/pkg/hmr"
+	"github.com/cameron-webmatter/galaxy/pkg/plugins"
+	"github.com/cameron-webmatter/galaxy/pkg/plugins/tailwind"
 )
 
 type DevServer struct {
@@ -48,6 +51,7 @@ type DevServer struct {
 	UseCodegen         bool
 	PageCache          *PageCache
 	PluginCompiler     *PluginCompiler
+	PluginManager      *plugins.Manager
 	compileMu          sync.Mutex
 	codegenServerCmd   *exec.Cmd
 	HMRServer          *hmr.Server
@@ -56,9 +60,14 @@ type DevServer struct {
 
 	codegenServerPort int
 	codegenReady      bool
+	codegenRebuildMu  sync.Mutex
+	rebuildTimer      *time.Timer
+	pendingRebuilds   map[string]bool
+	rebuildType       string
+	lastWasmAssets    map[string][]assets.WasmAsset
 }
 
-func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *DevServer {
+func NewDevServer(cfg *config.Config, rootDir, pagesDir, publicDir string, port int, verbose bool) *DevServer {
 	srcDir := filepath.Dir(pagesDir)
 
 	useCodegen := true
@@ -73,21 +82,30 @@ func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *
 		galaxyPath = absPath
 	}
 
+	pluginMgr := plugins.NewManager(cfg)
+	pluginMgr.Register(tailwind.New())
+
+	bundler := assets.NewBundler(".galaxy")
+	bundler.PluginManager = pluginMgr
+
 	srv := &DevServer{
 		Router:             router.NewRouter(pagesDir),
 		RootDir:            rootDir,
 		PagesDir:           pagesDir,
 		PublicDir:          publicDir,
 		Port:               port,
-		Bundler:            assets.NewBundler(".galaxy"),
+		Bundler:            bundler,
 		Compiler:           compiler.NewComponentCompiler(srcDir),
 		EndpointCompiler:   endpoints.NewCompiler(rootDir, ".galaxy/endpoints"),
 		MiddlewareCompiler: middleware.NewCompiler(rootDir, ".galaxy/middleware"),
 		Verbose:            verbose,
 
-		UseCodegen:     useCodegen,
-		PageCache:      NewPageCache(),
-		PluginCompiler: NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
+		UseCodegen:      useCodegen,
+		PageCache:       NewPageCache(),
+		PluginCompiler:  NewPluginCompiler(".galaxy", "dev-server", galaxyPath, rootDir),
+		PluginManager:   pluginMgr,
+		pendingRebuilds: make(map[string]bool),
+		lastWasmAssets:  make(map[string][]assets.WasmAsset),
 	}
 
 	srv.ChangeTracker = hmr.NewChangeTracker()
@@ -99,6 +117,10 @@ func NewDevServer(rootDir, pagesDir, publicDir string, port int, verbose bool) *
 }
 
 func (s *DevServer) Start() error {
+	if err := s.PluginManager.Load(s.RootDir, ".galaxy"); err != nil {
+		return fmt.Errorf("load plugins: %w", err)
+	}
+
 	if err := s.Router.Discover(); err != nil {
 		return err
 	}
@@ -456,6 +478,7 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 
 	// Build the server using CodegenBuilder
 	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, "dist", "dev-server", s.PublicDir)
+	builder.Bundler = s.Bundler
 	if err := builder.Build(); err != nil {
 		return fmt.Errorf("codegen build failed: %w", err)
 	}
@@ -488,6 +511,7 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 
 	// Set PORT after loading .env so it doesn't get overridden
 	envVars = append(envVars, fmt.Sprintf("PORT=%d", s.codegenServerPort))
+	envVars = append(envVars, "DEV_MODE=true")
 
 	cmd.Env = envVars
 	cmd.Stdout = os.Stdout
@@ -517,10 +541,187 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 	return fmt.Errorf("codegen server did not become ready")
 }
 
+func (s *DevServer) broadcastWasmReloadFromManifest(filesToRebuild []string) {
+	manifestPath := filepath.Join(s.RootDir, "dist", "server", "_assets", "wasm-manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		fmt.Printf("⚠ Could not read WASM manifest: %v\n", err)
+		return
+	}
+
+	var manifest struct {
+		Assets map[string]struct {
+			WasmModules []struct {
+				Hash       string `json:"hash"`
+				WasmPath   string `json:"wasmPath"`
+				LoaderPath string `json:"loaderPath"`
+			} `json:"wasmModules"`
+		} `json:"assets"`
+	}
+
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		fmt.Printf("⚠ Could not parse WASM manifest: %v\n", err)
+		return
+	}
+
+	// For each rebuilt file, broadcast WASM reload
+	for _, filePath := range filesToRebuild {
+		relPath, _ := filepath.Rel(s.PagesDir, filePath)
+		manifestKey := "pages/" + relPath
+
+		if pageAssets, ok := manifest.Assets[manifestKey]; ok && len(pageAssets.WasmModules) > 0 {
+			// Get the first WASM module (most pages only have one)
+			wasmMod := pageAssets.WasmModules[0]
+			moduleId := filepath.Base(filePath)
+
+			fmt.Printf("📦 Broadcasting WASM reload: %s -> %s\n", moduleId, wasmMod.WasmPath)
+			s.HMRServer.BroadcastWasmReload(wasmMod.WasmPath, wasmMod.Hash, moduleId)
+		}
+	}
+}
+
 func (s *DevServer) Shutdown() {
 	if s.codegenServerCmd != nil && s.codegenServerCmd.Process != nil {
 		s.codegenServerCmd.Process.Kill()
 	}
+}
+
+func (s *DevServer) ScheduleCodegenRebuild(filePath string) {
+	s.ScheduleCodegenRebuildWithType(filePath, "")
+}
+
+func (s *DevServer) ScheduleCodegenRebuildWithType(filePath string, changeType string) {
+	if !s.UseCodegen {
+		return
+	}
+
+	s.codegenRebuildMu.Lock()
+	defer s.codegenRebuildMu.Unlock()
+
+	// Add to pending rebuilds
+	s.pendingRebuilds[filePath] = true
+
+	// Track rebuild type (wasm, style, template, or empty for full)
+	if changeType != "" {
+		s.rebuildType = changeType
+	}
+
+	// Cancel existing timer
+	if s.rebuildTimer != nil {
+		s.rebuildTimer.Stop()
+	}
+
+	// Schedule rebuild after debounce period (300ms)
+	s.rebuildTimer = time.AfterFunc(300*time.Millisecond, func() {
+		s.executeCodegenRebuild()
+	})
+}
+
+func (s *DevServer) executeCodegenRebuild() {
+	s.codegenRebuildMu.Lock()
+	filesToRebuild := make([]string, 0, len(s.pendingRebuilds))
+	for file := range s.pendingRebuilds {
+		filesToRebuild = append(filesToRebuild, file)
+	}
+	s.pendingRebuilds = make(map[string]bool)
+	s.codegenRebuildMu.Unlock()
+
+	if len(filesToRebuild) == 0 {
+		return
+	}
+
+	fmt.Printf("\n🔨 Rebuilding codegen for %d file(s)...\n", len(filesToRebuild))
+	start := time.Now()
+
+	// Temporarily mark codegen as not ready (fall back to HMR)
+	s.codegenReady = false
+
+	builder := codegen.NewCodegenBuilder(s.Router.Routes, s.PagesDir, "dist", "dev-server", s.PublicDir)
+	builder.Bundler = s.Bundler
+
+	var rebuildErr error
+	for _, filePath := range filesToRebuild {
+		if err := builder.RebuildPage(filePath); err != nil {
+			fmt.Printf("❌ Rebuild failed for %s: %v\n", filepath.Base(filePath), err)
+			rebuildErr = err
+			break
+		}
+	}
+
+	if rebuildErr != nil {
+		// Keep using HMR on error
+		return
+	}
+
+	// Kill old codegen server
+	if s.codegenServerCmd != nil && s.codegenServerCmd.Process != nil {
+		s.codegenServerCmd.Process.Kill()
+		s.codegenServerCmd.Wait()
+	}
+
+	// Start new codegen server
+	serverBinary := "./galaxy-codegen-server"
+	cmd := exec.Command(serverBinary)
+	cmd.Dir = filepath.Join(s.RootDir, "dist", "server")
+
+	// Load .env and pass to codegen server
+	envVars := os.Environ()
+	envPath := filepath.Join(s.RootDir, ".env")
+	if data, err := os.ReadFile(envPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") && strings.Contains(line, "=") {
+				if !strings.HasPrefix(line, "PORT=") {
+					envVars = append(envVars, line)
+				}
+			}
+		}
+	}
+
+	envVars = append(envVars, fmt.Sprintf("PORT=%d", s.codegenServerPort))
+	envVars = append(envVars, "DEV_MODE=true")
+	cmd.Env = envVars
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("❌ Failed to start codegen server: %v\n", err)
+		return
+	}
+
+	s.codegenServerCmd = cmd
+
+	// Wait for server to be ready
+	serverURL := fmt.Sprintf("http://localhost:%d", s.codegenServerPort)
+	for i := 0; i < 50; i++ {
+		resp, err := http.Get(serverURL + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode < 500 {
+				s.codegenReady = true
+				duration := time.Since(start)
+				fmt.Printf("✅ Codegen rebuilt in %dms\n", duration.Milliseconds())
+
+				if s.HMRServer != nil {
+					if s.rebuildType == "wasm" {
+						// Broadcast WASM reload with updated asset info from manifest
+						s.broadcastWasmReloadFromManifest(filesToRebuild)
+					} else {
+						// Full reload for other change types
+						s.HMRServer.BroadcastReload()
+					}
+				}
+
+				// Reset rebuild type
+				s.rebuildType = ""
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	fmt.Printf("⚠ Codegen server did not become ready\n")
 }
 
 func (s *DevServer) proxyToCodegenServer(w http.ResponseWriter, r *http.Request) {

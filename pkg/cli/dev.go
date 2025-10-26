@@ -67,7 +67,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pages directory not found: %s", pagesDir)
 	}
 
-	srv := server.NewDevServer(cwd, pagesDir, publicDir, devPort, devVerbose)
+	srv := server.NewDevServer(cfg, cwd, pagesDir, publicDir, devPort, devVerbose)
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -122,12 +122,21 @@ func runDev(cmd *cobra.Command, args []string) error {
 										srv.HMRServer.BroadcastReload()
 									}
 								} else if diff.CanHotSwapStyles() {
+									// Style-only change - don't rebuild codegen, just hot swap CSS
 									content, _ := os.ReadFile(event.Name)
 									comp, _ := parser.Parse(string(content))
 									if comp != nil && len(comp.Styles) > 0 {
 										var combined strings.Builder
+										relPath, _ := filepath.Rel(filepath.Dir(pagesDir), event.Name)
 										for _, style := range comp.Styles {
-											combined.WriteString(style.Content)
+											cssContent := style.Content
+											if srv.Bundler.PluginManager != nil {
+												transformed, err := srv.Bundler.PluginManager.TransformCSS(cssContent, relPath)
+												if err == nil {
+													cssContent = transformed
+												}
+											}
+											combined.WriteString(cssContent)
 											combined.WriteString("\n")
 										}
 										hash := fmt.Sprintf("%x", sha256.Sum256([]byte(combined.String())))[:8]
@@ -136,10 +145,26 @@ func runDev(cmd *cobra.Command, args []string) error {
 											fmt.Printf("🎨 Styles updated (hot swap)\n")
 										}
 									}
+									// Also rebuild codegen for pages to update bundled CSS
+									if !isComponent && isUnderDir(event.Name, pagesDir) {
+										srv.ScheduleCodegenRebuild(event.Name)
+									}
 								} else if diff.NeedsFullReload() {
-									srv.HMRServer.BroadcastWasmReload(event.Name, "", filepath.Base(event.Name))
+									// Script/frontmatter change - rebuild codegen first, then broadcast WASM reload
+									if !verbose && !silent {
+										fmt.Printf("📦 WASM change detected\n")
+									}
+									// Rebuild codegen for pages (but mark as wasm-only to avoid full reload)
+									// WASM reload will be broadcast after rebuild completes with correct paths
+									if !isComponent && isUnderDir(event.Name, pagesDir) {
+										srv.ScheduleCodegenRebuildWithType(event.Name, "wasm")
+									}
 								} else if diff.TemplateChanged {
+									// Template-only change - rebuild codegen
 									srv.HMRServer.BroadcastTemplateUpdate(event.Name)
+									if !isComponent && isUnderDir(event.Name, pagesDir) {
+										srv.ScheduleCodegenRebuild(event.Name)
+									}
 								}
 							}
 						}
@@ -166,7 +191,10 @@ func runDev(cmd *cobra.Command, args []string) error {
 						}
 					}
 				}
-			case err := <-watcher.Errors:
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
 				if err != nil && !silent {
 					fmt.Printf("⚠ Watcher error: %v\n", err)
 				}

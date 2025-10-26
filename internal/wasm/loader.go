@@ -4,11 +4,11 @@ import (
 	"fmt"
 )
 
-func GenerateLoader(wasmPath string) string {
+func GenerateLoader(wasmPath, pageId string) string {
 	return fmt.Sprintf(`
 (function() {
 	const wasmPath = "%s";
-	const moduleId = wasmPath.replace(/[^a-zA-Z0-9]/g, '_');
+	const moduleId = "%s";
 	
 	window.__galaxyWasmModules = window.__galaxyWasmModules || {};
 	window.__galaxyWasmAcceptHandlers = window.__galaxyWasmAcceptHandlers || {};

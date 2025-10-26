@@ -56,7 +56,21 @@ func RenderTemplate(ctx *RenderContext, templateHTML string) string {
 	return rendered
 }
 
+func InjectCSS(html, cssPath string) string {
+	if cssPath != "" {
+		cssTag := "<link rel=\"stylesheet\" href=\"" + cssPath + "\">"
+		html = strings.Replace(html, "</head>", "\t" + cssTag + "\n</head>", 1)
+	}
+	return html
+}
+
 func InjectWasmAssets(html, urlPath string) string {
+	// Inject HMR client in dev mode
+	if os.Getenv("DEV_MODE") == "true" {
+		hmrScript := "<script src=\"/__hmr/client.js\"></script>"
+		html = strings.Replace(html, "</head>", "\t" + hmrScript + "\n</head>", 1)
+	}
+	
 	if wasmManifest == nil {
 		// Manifest not loaded, try loading now
 		loadWasmManifest()
