@@ -1,7 +1,5 @@
 ---
 import Layout from "../components/Layout.gxc"
-import PostCard from "../components/PostCard.gxc"
-import BlogList from "../components/BlogList.gxc"
 
 import "github.com/cameron-webmatter/galaxy/pkg/content"
 
@@ -26,17 +24,18 @@ for _, post := range posts {
 			<p>{subtitle}</p>
 		</header>
 
-		<BlogList>
-			<div galaxy:for={post in publishedPosts}>
-				<PostCard 
-					slug={post.Slug}
-					title={post.GetString("title")}
-					pubDate={post.GetString("pubDate")}
-					author={post.GetString("author")}
-					tags={post.GetStringSlice("tags")}
-				/>
-			</div>
-		</BlogList>
+		<div class="blog-list">
+			<article class="post-card" galaxy:for={post in publishedPosts}>
+				<h2><a href="/blog/{post.Slug}">{post.GetString("title")}</a></h2>
+				<div class="meta">
+					<time>{post.GetString("pubDate")}</time>
+					<span class="author" galaxy:if={post.GetString("author")}>by {post.GetString("author")}</span>
+				</div>
+				<div class="tags" galaxy:if={post.GetStringSlice("tags")}>
+					<span class="tag" galaxy:for={tag in post.GetStringSlice("tags")}>{tag}</span>
+				</div>
+			</article>
+		</div>
 	</main>
 </Layout>
 
@@ -63,5 +62,56 @@ p {
 	color: #6b7280;
 	font-size: 1.125rem;
 	margin: 0;
+}
+
+.blog-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2rem;
+}
+
+.post-card {
+	padding: 1.5rem 0;
+	border-bottom: 1px solid #e5e7eb;
+}
+
+.post-card:last-child {
+	border-bottom: none;
+}
+
+.post-card h2 {
+	margin: 0 0 0.5rem 0;
+	font-size: 1.5rem;
+}
+
+.post-card a {
+	color: #1f2937;
+	text-decoration: none;
+}
+
+.post-card a:hover {
+	color: #2563eb;
+}
+
+.meta {
+	display: flex;
+	gap: 1rem;
+	color: #6b7280;
+	font-size: 0.875rem;
+	margin-bottom: 0.75rem;
+}
+
+.tags {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
+.tag {
+	background: #e5e7eb;
+	padding: 0.25rem 0.75rem;
+	border-radius: 1rem;
+	font-size: 0.75rem;
+	color: #374151;
 }
 </style>
