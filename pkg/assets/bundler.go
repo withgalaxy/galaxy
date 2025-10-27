@@ -130,7 +130,7 @@ func (b *Bundler) BundleWasmScripts(comp *parser.Component, pagePath string) ([]
 			return nil, fmt.Errorf("compile wasm: %w", err)
 		}
 
-		loaderContent := wasm.GenerateLoader("/_assets/wasm/script-"+module.Hash+".wasm", moduleID)
+		loaderContent := GenerateWasmLoader("/_assets/wasm/script-"+module.Hash+".wasm", moduleID)
 		loaderAsset, err := b.orbitBundler.BundleJS(loaderContent, pagePath+"-loader", nil)
 		if err != nil {
 			return nil, err
