@@ -10,10 +10,10 @@ import (
 	"os"
 	"strings"
 	
-	"github.com/cameron-webmatter/galaxy/pkg/compiler"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/template"
-	"github.com/cameron-webmatter/galaxy/pkg/wasm"
+	"github.com/withgalaxy/galaxy/pkg/compiler"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/template"
+	"github.com/withgalaxy/galaxy/pkg/wasm"
 )
 
 var comp *compiler.ComponentCompiler

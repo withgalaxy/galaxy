@@ -18,7 +18,7 @@ func init() {
 }
 
 func runDocs(cmd *cobra.Command, args []string) error {
-	url := "https://github.com/cameron-webmatter/galaxy"
+	url := "https://github.com/withgalaxy/galaxy"
 
 	if !silent {
 		fmt.Printf("📚 Opening docs: %s\n", url)

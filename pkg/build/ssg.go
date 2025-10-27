@@ -8,16 +8,16 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/assets"
-	"github.com/cameron-webmatter/galaxy/pkg/compiler"
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	"github.com/cameron-webmatter/galaxy/pkg/content"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins/tailwind"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
-	"github.com/cameron-webmatter/galaxy/pkg/template"
+	"github.com/withgalaxy/galaxy/pkg/assets"
+	"github.com/withgalaxy/galaxy/pkg/compiler"
+	"github.com/withgalaxy/galaxy/pkg/config"
+	"github.com/withgalaxy/galaxy/pkg/content"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/plugins"
+	"github.com/withgalaxy/galaxy/pkg/plugins/tailwind"
+	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/template"
 )
 
 type SSGBuilder struct {

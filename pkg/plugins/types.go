@@ -1,8 +1,8 @@
 package plugins
 
 import (
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/config"
+	"github.com/withgalaxy/galaxy/pkg/parser"
 )
 
 type Plugin interface {

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/plugins"
+	"github.com/withgalaxy/galaxy/pkg/plugins"
 )
 
 type TailwindPlugin struct {

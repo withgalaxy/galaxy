@@ -3,7 +3,7 @@ package src
 import (
 	"time"
 
-	"github.com/cameron-webmatter/galaxy/pkg/middleware"
+	"github.com/withgalaxy/galaxy/pkg/middleware"
 )
 
 func OnRequest(ctx *middleware.Context, next func() error) error {

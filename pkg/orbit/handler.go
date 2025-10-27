@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
-	"github.com/cameron-webmatter/galaxy/pkg/server"
+	"github.com/withgalaxy/galaxy/pkg/endpoints"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/server"
 )
 
 func (p *GalaxyPlugin) handleRoute(w http.ResponseWriter, r *http.Request, route *router.Route, params map[string]string) {

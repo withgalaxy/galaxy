@@ -1,7 +1,7 @@
 package hmr
 
 import (
-	orbit "github.com/cameron-webmatter/orbit/hmr"
+	orbit "github.com/withgalaxy/orbit/hmr"
 )
 
 type Server = orbit.Server

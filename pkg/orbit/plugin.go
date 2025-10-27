@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/assets"
-	"github.com/cameron-webmatter/galaxy/pkg/compiler"
-	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
-	"github.com/cameron-webmatter/galaxy/pkg/hmr"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
-	"github.com/cameron-webmatter/galaxy/pkg/server"
-	orbit "github.com/cameron-webmatter/orbit/plugin"
+	"github.com/withgalaxy/galaxy/pkg/assets"
+	"github.com/withgalaxy/galaxy/pkg/compiler"
+	"github.com/withgalaxy/galaxy/pkg/endpoints"
+	"github.com/withgalaxy/galaxy/pkg/hmr"
+	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/server"
+	orbit "github.com/withgalaxy/orbit/plugin"
 )
 
 type GalaxyPlugin struct {

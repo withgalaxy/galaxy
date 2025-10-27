@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cameron-webmatter/galaxy/pkg/lsp"
+	"github.com/withgalaxy/galaxy/pkg/lsp"
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"

@@ -66,7 +66,7 @@ func (c *Compiler) Compile(script, pagePath string) (*CompiledModule, error) {
 	if moduleRoot == "" {
 		return nil, fmt.Errorf("could not find galaxy module root")
 	}
-	moduleContent := fmt.Sprintf("module wasmscript\n\ngo 1.21\n\nrequire github.com/cameron-webmatter/galaxy v0.0.0\n\nreplace github.com/cameron-webmatter/galaxy => %s\n", moduleRoot)
+	moduleContent := fmt.Sprintf("module wasmscript\n\ngo 1.21\n\nrequire github.com/withgalaxy/galaxy v0.0.0\n\nreplace github.com/withgalaxy/galaxy => %s\n", moduleRoot)
 	if err := os.WriteFile(goMod, []byte(moduleContent), 0644); err != nil {
 		return nil, fmt.Errorf("write go.mod: %w", err)
 	}
@@ -139,7 +139,7 @@ func findModuleRoot() string {
 		for {
 			goModPath := filepath.Join(dir, "go.mod")
 			if data, err := os.ReadFile(goModPath); err == nil {
-				if strings.Contains(string(data), "module github.com/cameron-webmatter/galaxy") {
+				if strings.Contains(string(data), "module github.com/withgalaxy/galaxy") {
 					return dir
 				}
 			}
@@ -151,7 +151,7 @@ func findModuleRoot() string {
 		}
 	}
 
-	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/cameron-webmatter/galaxy")
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/withgalaxy/galaxy")
 	output, err := cmd.Output()
 	if err == nil && len(output) > 0 {
 		return strings.TrimSpace(string(output))

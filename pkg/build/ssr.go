@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/assets"
-	"github.com/cameron-webmatter/galaxy/pkg/codegen"
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins/tailwind"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
-	"github.com/cameron-webmatter/galaxy/pkg/wasm"
+	"github.com/withgalaxy/galaxy/pkg/assets"
+	"github.com/withgalaxy/galaxy/pkg/codegen"
+	"github.com/withgalaxy/galaxy/pkg/config"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/plugins"
+	"github.com/withgalaxy/galaxy/pkg/plugins/tailwind"
+	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/wasm"
 )
 
 type SSRBuilder struct {

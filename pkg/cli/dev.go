@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	galaxyOrbit "github.com/cameron-webmatter/galaxy/pkg/orbit"
-	orbitConfig "github.com/cameron-webmatter/orbit/config"
-	"github.com/cameron-webmatter/orbit/dev_server"
+	"github.com/withgalaxy/galaxy/pkg/config"
+	galaxyOrbit "github.com/withgalaxy/galaxy/pkg/orbit"
+	orbitConfig "github.com/withgalaxy/orbit/config"
+	"github.com/withgalaxy/orbit/dev_server"
 	"github.com/spf13/cobra"
 )
 

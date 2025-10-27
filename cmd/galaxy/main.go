@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/cameron-webmatter/galaxy/pkg/cli"
+	"github.com/withgalaxy/galaxy/pkg/cli"
 )
 
 func main() {

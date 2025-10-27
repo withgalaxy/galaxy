@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	galaxyOrbit "github.com/cameron-webmatter/galaxy/pkg/orbit"
-	"github.com/cameron-webmatter/orbit/config"
-	"github.com/cameron-webmatter/orbit/dev_server"
+	galaxyOrbit "github.com/withgalaxy/galaxy/pkg/orbit"
+	"github.com/withgalaxy/orbit/config"
+	"github.com/withgalaxy/orbit/dev_server"
 )
 
 func main() {

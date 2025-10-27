@@ -9,12 +9,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/assets"
-	"github.com/cameron-webmatter/galaxy/pkg/compiler"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
-	"github.com/cameron-webmatter/galaxy/pkg/wasm"
+	"github.com/withgalaxy/galaxy/pkg/assets"
+	"github.com/withgalaxy/galaxy/pkg/compiler"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/wasm"
 )
 
 type CodegenBuilder struct {
@@ -194,7 +194,7 @@ func (b *CodegenBuilder) generateGoMod(serverDir string) error {
 				projectModule = strings.TrimSpace(strings.TrimPrefix(line, "module"))
 			}
 			// Get Galaxy replace path
-			if strings.Contains(line, "replace github.com/cameron-webmatter/galaxy") {
+			if strings.Contains(line, "replace github.com/withgalaxy/galaxy") {
 				parts := strings.Split(line, "=>")
 				if len(parts) == 2 {
 					galaxyPath = strings.TrimSpace(parts[1])
@@ -243,7 +243,7 @@ func (b *CodegenBuilder) generateGoMod(serverDir string) error {
 
 go 1.23
 
-replace github.com/cameron-webmatter/galaxy => %s
+replace github.com/withgalaxy/galaxy => %s
 `, b.ModuleName, galaxyPath)
 
 	// Add replace for project's own module (so local imports work)
@@ -254,7 +254,7 @@ replace github.com/cameron-webmatter/galaxy => %s
 `, projectModule, absCwd)
 	}
 
-	goMod += `require github.com/cameron-webmatter/galaxy v0.0.0
+	goMod += `require github.com/withgalaxy/galaxy v0.0.0
 `
 
 	return os.WriteFile(filepath.Join(serverDir, "go.mod"), []byte(goMod), 0644)
@@ -273,7 +273,7 @@ func findGalaxyRoot() (string, error) {
 			continue
 		}
 
-		if strings.Contains(string(data), "module github.com/cameron-webmatter/galaxy") {
+		if strings.Contains(string(data), "module github.com/withgalaxy/galaxy") {
 			return dir, nil
 		}
 	}

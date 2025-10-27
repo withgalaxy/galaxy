@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 func NewMainGenerator(handlers []*GeneratedHandler, routes []*router.Route, moduleName, manifestPath string) *MainGenerator {
@@ -37,7 +37,7 @@ func (g *MainGenerator) Generate() string {
 	middlewareImport := ""
 	if g.HasMiddleware {
 		middlewareImport = `
-	"github.com/cameron-webmatter/galaxy/pkg/middleware"`
+	"github.com/withgalaxy/galaxy/pkg/middleware"`
 	}
 
 	return fmt.Sprintf(`package main
@@ -50,8 +50,8 @@ import (
 	"path/filepath"
 	%s
 	"strings"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/template"%s
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/template"%s
 	"%s/runtime"
 	%s
 	%s

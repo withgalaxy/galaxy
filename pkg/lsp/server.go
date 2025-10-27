@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )

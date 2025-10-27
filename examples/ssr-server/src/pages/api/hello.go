@@ -3,7 +3,7 @@ package api
 import (
 	"time"
 
-	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
+	"github.com/withgalaxy/galaxy/pkg/endpoints"
 )
 
 func GET(ctx *endpoints.Context) error {

@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 func (b *CodegenBuilder) processEndpoint(route *router.Route, serverDir string) (*EndpointHandler, error) {
@@ -182,7 +182,7 @@ func (g *MainGenerator) collectEndpointImports() string {
 	}
 
 	var imports []string
-	imports = append(imports, `"github.com/cameron-webmatter/galaxy/pkg/endpoints"`)
+	imports = append(imports, `"github.com/withgalaxy/galaxy/pkg/endpoints"`)
 
 	for _, ep := range g.Endpoints {
 		imports = append(imports, fmt.Sprintf(`%s "%s"`, ep.PackageName, ep.ImportPath))

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins"
-	"github.com/cameron-webmatter/orbit/bundler"
-	"github.com/cameron-webmatter/orbit/wasm"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/plugins"
+	"github.com/withgalaxy/orbit/bundler"
+	"github.com/withgalaxy/orbit/wasm"
 )
 
 type Bundler struct {

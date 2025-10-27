@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	"github.com/cameron-webmatter/galaxy/pkg/hmr"
+	"github.com/withgalaxy/galaxy/pkg/config"
+	"github.com/withgalaxy/galaxy/pkg/hmr"
 )
 
 func TestNewDevServer(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 func TestNewCodegenBuilder(t *testing.T) {
@@ -163,7 +163,7 @@ func TestCodegenBuilder_GenerateGoMod(t *testing.T) {
 	if !contains(goModContent, "module") {
 		t.Error("go.mod should contain module declaration")
 	}
-	if !contains(goModContent, "github.com/cameron-webmatter/galaxy") {
+	if !contains(goModContent, "github.com/withgalaxy/galaxy") {
 		t.Error("go.mod should require galaxy")
 	}
 }
