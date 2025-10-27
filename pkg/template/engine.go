@@ -10,7 +10,8 @@ import (
 )
 
 type Engine struct {
-	ctx *executor.Context
+	ctx       *executor.Context
+	parentCtx *executor.Context
 }
 
 func NewEngine(ctx *executor.Context) *Engine {
@@ -23,8 +24,9 @@ var (
 )
 
 type RenderOptions struct {
-	Props map[string]interface{}
-	Slots map[string]string
+	Props     map[string]interface{}
+	Slots     map[string]string
+	ParentCtx *executor.Context
 }
 
 func (e *Engine) Render(template string, opts *RenderOptions) (string, error) {
@@ -36,21 +38,62 @@ func (e *Engine) Render(template string, opts *RenderOptions) (string, error) {
 		if opts.Slots != nil {
 			e.ctx.Slots = opts.Slots
 		}
+		if opts.ParentCtx != nil {
+			e.parentCtx = opts.ParentCtx
+		}
 	}
 
 	result := template
 
 	result = e.renderDirectives(result)
 	result = e.renderSlots(result)
+
+	if e.parentCtx != nil {
+		oldCtx := e.ctx
+		e.ctx = e.parentCtx
+		result = e.renderDirectives(result)
+		e.ctx = oldCtx
+	} else {
+		result = e.renderDirectives(result)
+	}
+
+	result = e.renderHtmlExpressions(result)
 	result = e.renderExpressions(result)
 
 	return result, nil
+}
+
+func (e *Engine) renderHtmlExpressions(template string) string {
+	htmlRegex := regexp.MustCompile(`\{@html\s+([^}]+)\}`)
+	return htmlRegex.ReplaceAllStringFunc(template, func(match string) string {
+		matches := htmlRegex.FindStringSubmatch(match)
+		if len(matches) < 2 {
+			return match
+		}
+
+		varName := strings.TrimSpace(matches[1])
+
+		if val, ok := e.ctx.Get(varName); ok {
+			return fmt.Sprintf("%v", val)
+		}
+
+		if val, ok := e.ctx.GetProp(varName); ok {
+			return fmt.Sprintf("%v", val)
+		}
+
+		return match
+	})
 }
 
 func (e *Engine) renderExpressions(template string) string {
 	return expressionRegex.ReplaceAllStringFunc(template, func(match string) string {
 		expr := strings.Trim(match, "{}")
 		expr = strings.TrimSpace(expr)
+
+		// Skip @html expressions (already processed)
+		if strings.HasPrefix(expr, "@html") {
+			return match
+		}
 
 		if val, ok := e.ctx.Get(expr); ok {
 			return fmt.Sprintf("%v", val)
@@ -97,6 +140,17 @@ func (e *Engine) renderSlots(template string) string {
 
 		return ""
 	})
+}
+
+func (e *Engine) SetParentContext(parentCtx *executor.Context) {
+	e.parentCtx = parentCtx
+}
+
+func (e *Engine) GetContextForSlots() *executor.Context {
+	if e.parentCtx != nil {
+		return e.parentCtx
+	}
+	return e.ctx
 }
 
 func findDirectiveElement(template string, directiveName string) (tag string, attrs string, content string, start int, end int, found bool) {
@@ -751,7 +805,38 @@ func (e *Engine) evaluateExpression(expr string) (string, bool) {
 	}
 
 	methodCall := parts[1]
-	if strings.HasSuffix(methodCall, "()") {
+
+	// Check if it's a method call (has parentheses)
+	if strings.Contains(methodCall, "(") && strings.HasSuffix(methodCall, ")") {
+		// Extract method name and arguments
+		openParen := strings.Index(methodCall, "(")
+		methodName := methodCall[:openParen]
+		argsStr := methodCall[openParen+1 : len(methodCall)-1]
+
+		// Try reflection-based method invocation
+		v := reflect.ValueOf(val)
+		method := v.MethodByName(methodName)
+		if method.IsValid() {
+			// Parse arguments
+			var args []reflect.Value
+			if argsStr != "" {
+				// Simple string argument parsing (quoted strings)
+				argParts := strings.Split(argsStr, ",")
+				for _, arg := range argParts {
+					arg = strings.TrimSpace(arg)
+					// Remove quotes
+					arg = strings.Trim(arg, "\"'")
+					args = append(args, reflect.ValueOf(arg))
+				}
+			}
+
+			// Call method
+			results := method.Call(args)
+			if len(results) > 0 {
+				return fmt.Sprintf("%v", results[0].Interface()), true
+			}
+		}
+	} else if strings.HasSuffix(methodCall, "()") {
 		methodName := strings.TrimSuffix(methodCall, "()")
 
 		if reqCtx, ok := val.(interface {

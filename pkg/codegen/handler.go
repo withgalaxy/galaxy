@@ -62,6 +62,21 @@ func (g *HandlerGenerator) extractImports() []string {
 			result = append(result, line)
 		}
 	}
+
+	// Auto-import content package if Galaxy.Content is used
+	if strings.Contains(g.Component.Frontmatter, "Galaxy.Content.") {
+		hasContent := false
+		for _, imp := range result {
+			if strings.Contains(imp, "galaxy/pkg/content") {
+				hasContent = true
+				break
+			}
+		}
+		if !hasContent {
+			result = append(result, `"github.com/cameron-webmatter/galaxy/pkg/content"`)
+		}
+	}
+
 	return result
 }
 
@@ -86,7 +101,22 @@ func (g *HandlerGenerator) transformCode(code string) string {
 
 	code = regexp.MustCompile(`Locals\.(\w+)`).ReplaceAllString(code, "locals[\"$1\"]")
 
+	// Transform Galaxy.Content.Get() to content.Get()
+	code = regexp.MustCompile(`Galaxy\.Content\.Get\(`).ReplaceAllString(code, "content.Get(")
+	code = regexp.MustCompile(`Galaxy\.Content\.GetCollection\(`).ReplaceAllString(code, "content.GetCollection(")
+
+	// Transform entry.field to entry["field"] for content entry access
+	// This handles variables assigned from content.Get()
+	code = transformContentEntryAccess(code)
+
 	return code
+}
+
+func transformContentEntryAccess(code string) string {
+	// Find patterns like: entry.title, entry.content, etc.
+	// Replace with: entry["title"], entry["content"]
+	pattern := regexp.MustCompile(`\b(\w+)\.(title|pubDate|author|content|slug|body)\b`)
+	return pattern.ReplaceAllString(code, `$1["$2"]`)
 }
 
 func (g *HandlerGenerator) functionName() string {

@@ -1,17 +1,10 @@
 ---
-import "github.com/cameron-webmatter/galaxy/pkg/content"
+entry := Galaxy.Content.Get("blog", Galaxy.Params["slug"])
 
-collections := content.NewCollections("./src/content")
-entry, err := collections.GetEntry("blog", Galaxy.Params["slug"])
-if err != nil {
-	Galaxy.Redirect("/404", 404)
-}
-
-rendered, _ := collections.Render(entry)
-
-var title = entry.GetString("title")
-var pubDate = entry.GetString("pubDate")
-var author = entry.GetString("author")
+var title = entry.title
+var pubDate = entry.pubDate
+var author = entry.author
+var htmlContent = entry.content
 ---
 
 <Layout title={title}>
@@ -24,7 +17,7 @@ var author = entry.GetString("author")
 			</div>
 		</header>
 		<div class="post-content">
-			{@html rendered}
+			{@html htmlContent}
 		</div>
 	</article>
 </Layout>

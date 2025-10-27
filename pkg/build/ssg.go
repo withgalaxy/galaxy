@@ -5,11 +5,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cameron-webmatter/galaxy/internal/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
 	"github.com/cameron-webmatter/galaxy/pkg/config"
+	"github.com/cameron-webmatter/galaxy/pkg/content"
 	"github.com/cameron-webmatter/galaxy/pkg/executor"
 	"github.com/cameron-webmatter/galaxy/pkg/parser"
 	"github.com/cameron-webmatter/galaxy/pkg/plugins"
@@ -96,8 +98,15 @@ func (b *SSGBuilder) Build() error {
 				return fmt.Errorf("build markdown route %s: %w", route.Pattern, err)
 			}
 		} else {
-			if err := b.buildStaticRoute(route); err != nil {
-				return fmt.Errorf("build static route %s: %w", route.Pattern, err)
+			// Check if route has dynamic parameters
+			if len(route.ParamNames) > 0 && strings.Contains(route.Pattern, "[") {
+				if err := b.buildDynamicRoute(route); err != nil {
+					return fmt.Errorf("build dynamic route %s: %w", route.Pattern, err)
+				}
+			} else {
+				if err := b.buildStaticRoute(route); err != nil {
+					return fmt.Errorf("build static route %s: %w", route.Pattern, err)
+				}
 			}
 		}
 	}
@@ -185,9 +194,17 @@ func (b *SSGBuilder) buildStaticRoute(route *router.Route) error {
 		}
 	}
 
+	// Convert absolute asset paths to relative paths for static sites
+	outPath := b.getOutputPath(route.Pattern)
+	cssPath = b.makePathRelative(cssPath, outPath)
+	jsPath = b.makePathRelative(jsPath, outPath)
+	for i := range wasmAssets {
+		wasmAssets[i].WasmPath = b.makePathRelative(wasmAssets[i].WasmPath, outPath)
+		wasmAssets[i].LoaderPath = b.makePathRelative(wasmAssets[i].LoaderPath, outPath)
+	}
+
 	rendered = b.Bundler.InjectAssetsWithWasm(rendered, cssPath, jsPath, scopeID, wasmAssets)
 
-	outPath := b.getOutputPath(route.Pattern)
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
 		return err
 	}
@@ -200,6 +217,152 @@ func (b *SSGBuilder) buildStaticRoute(route *router.Route) error {
 	return nil
 }
 
+func (b *SSGBuilder) buildDynamicRoute(route *router.Route) error {
+	fileContent, err := os.ReadFile(route.FilePath)
+	if err != nil {
+		return err
+	}
+
+	comp, err := parser.Parse(string(fileContent))
+	if err != nil {
+		return err
+	}
+
+	// Extract the param name from the route (e.g., "slug" from "[slug]")
+	if len(route.ParamNames) == 0 {
+		return fmt.Errorf("dynamic route has no param names")
+	}
+	paramName := route.ParamNames[0]
+
+	// Parse frontmatter to detect collection usage
+	// Look for Galaxy.Content.Get patterns to determine collection name
+	collectionName := b.detectCollectionFromFrontmatter(comp.Frontmatter, paramName)
+	if collectionName == "" {
+		// Can't determine collection, skip
+		fmt.Printf("  ⊘ %s (skipped - no collection detected)\n", route.Pattern)
+		return nil
+	}
+
+	// Use content package to get collection entries
+	entries := content.GetCollection(collectionName)
+	if entries == nil {
+		return fmt.Errorf("collection %s not found", collectionName)
+	}
+
+	// Render each entry
+	for _, entry := range entries {
+		slug, ok := entry["slug"].(string)
+		if !ok {
+			continue
+		}
+
+		// Create context with params
+		ctx := executor.NewContext()
+
+		// Set the param (e.g., slug) in Galaxy.Params
+		if galaxyAPI, ok := ctx.Variables["Galaxy"].(*executor.GalaxyAPI); ok {
+			galaxyAPI.Params[paramName] = slug
+		}
+
+		// Execute frontmatter
+		if comp.Frontmatter != "" {
+			if err := ctx.Execute(comp.Frontmatter); err != nil {
+				return fmt.Errorf("execute frontmatter for %s: %w", slug, err)
+			}
+		}
+
+		resolver := b.Compiler.Resolver
+		resolver.SetCurrentFile(route.FilePath)
+
+		imports := make([]compiler.Import, len(comp.Imports))
+		for i, imp := range comp.Imports {
+			imports[i] = compiler.Import{
+				Path:        imp.Path,
+				Alias:       imp.Alias,
+				IsComponent: imp.IsComponent,
+			}
+		}
+		resolver.ParseImports(imports)
+
+		b.Compiler.CollectedStyles = nil
+		processedTemplate := b.Compiler.ProcessComponentTags(comp.Template, ctx)
+
+		engine := template.NewEngine(ctx)
+		rendered, err := engine.Render(processedTemplate, nil)
+		if err != nil {
+			return fmt.Errorf("render %s: %w", slug, err)
+		}
+
+		allStyles := append(comp.Styles, b.Compiler.CollectedStyles...)
+		compWithStyles := &parser.Component{
+			Frontmatter: comp.Frontmatter,
+			Template:    comp.Template,
+			Scripts:     comp.Scripts,
+			Styles:      allStyles,
+			Imports:     comp.Imports,
+		}
+
+		cssPath, err := b.Bundler.BundleStyles(compWithStyles, route.FilePath)
+		if err != nil {
+			return err
+		}
+
+		jsPath, err := b.Bundler.BundleScripts(comp, route.FilePath)
+		if err != nil {
+			return err
+		}
+
+		wasmAssets, err := b.Bundler.BundleWasmScripts(comp, route.FilePath)
+		if err != nil {
+			return err
+		}
+
+		scopeID := ""
+		for _, style := range allStyles {
+			if style.Scoped {
+				scopeID = b.Bundler.GenerateScopeID(route.FilePath)
+				break
+			}
+		}
+
+		// Create output path by replacing [param] with actual value
+		pattern := strings.Replace(route.Pattern, "["+paramName+"]", slug, 1)
+		outPath := b.getOutputPath(pattern)
+
+		// Convert absolute asset paths to relative paths for static sites
+		cssPath = b.makePathRelative(cssPath, outPath)
+		jsPath = b.makePathRelative(jsPath, outPath)
+		for i := range wasmAssets {
+			wasmAssets[i].WasmPath = b.makePathRelative(wasmAssets[i].WasmPath, outPath)
+			wasmAssets[i].LoaderPath = b.makePathRelative(wasmAssets[i].LoaderPath, outPath)
+		}
+
+		rendered = b.Bundler.InjectAssetsWithWasm(rendered, cssPath, jsPath, scopeID, wasmAssets)
+
+		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(outPath, []byte(rendered), 0644); err != nil {
+			return err
+		}
+
+		fmt.Printf("  ✓ %s → %s\n", pattern, outPath)
+	}
+
+	return nil
+}
+
+func (b *SSGBuilder) detectCollectionFromFrontmatter(frontmatter string, paramName string) string {
+	// Look for Galaxy.Content.Get("collectionName", Galaxy.Params["paramName"])
+	pattern := regexp.MustCompile(`Galaxy\.Content\.Get\("([^"]+)",\s*Galaxy\.Params\["` + paramName + `"\]`)
+	matches := pattern.FindStringSubmatch(frontmatter)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
+}
+
 func (b *SSGBuilder) getOutputPath(pattern string) string {
 	if pattern == "/" {
 		return filepath.Join(b.OutDir, "index.html")
@@ -207,6 +370,27 @@ func (b *SSGBuilder) getOutputPath(pattern string) string {
 
 	pattern = strings.TrimPrefix(pattern, "/")
 	return filepath.Join(b.OutDir, pattern, "index.html")
+}
+
+func (b *SSGBuilder) makePathRelative(assetPath, htmlFilePath string) string {
+	if assetPath == "" {
+		return ""
+	}
+
+	// Remove leading slash from asset path (e.g., /_assets/styles.css -> _assets/styles.css)
+	assetPath = strings.TrimPrefix(assetPath, "/")
+
+	// Get the directory containing the HTML file
+	htmlDir := filepath.Dir(htmlFilePath)
+
+	// Calculate relative path from HTML file to asset
+	relPath, err := filepath.Rel(htmlDir, filepath.Join(b.OutDir, assetPath))
+	if err != nil {
+		// Fallback to original path if we can't calculate relative path
+		return assetPath
+	}
+
+	return relPath
 }
 
 func (b *SSGBuilder) copyPublicAssets() error {

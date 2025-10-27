@@ -58,6 +58,10 @@ func (c *ComponentCompiler) trackComponent(componentPath string) {
 }
 
 func (c *ComponentCompiler) Compile(filePath string, props map[string]interface{}, slots map[string]string) (string, error) {
+	return c.CompileWithContext(filePath, props, slots, nil)
+}
+
+func (c *ComponentCompiler) CompileWithContext(filePath string, props map[string]interface{}, slots map[string]string, parentCtx *executor.Context) (string, error) {
 	comp, err := c.loadComponent(filePath)
 	if err != nil {
 		return "", err
@@ -67,7 +71,13 @@ func (c *ComponentCompiler) Compile(filePath string, props map[string]interface{
 	copy(copiedStyles, comp.Styles)
 	c.CollectedStyles = append(c.CollectedStyles, copiedStyles...)
 
-	ctx := executor.NewContext()
+	var ctx *executor.Context
+	if parentCtx != nil {
+		ctx = parentCtx.Clone()
+	} else {
+		ctx = executor.NewContext()
+	}
+
 	for k, v := range props {
 		ctx.SetProp(k, v)
 		ctx.Set(k, v)
@@ -83,8 +93,9 @@ func (c *ComponentCompiler) Compile(filePath string, props map[string]interface{
 
 	engine := tmpl.NewEngine(ctx)
 	rendered, err := engine.Render(processedTemplate, &tmpl.RenderOptions{
-		Props: props,
-		Slots: slots,
+		Props:     props,
+		Slots:     slots,
+		ParentCtx: parentCtx,
 	})
 	if err != nil {
 		return "", err
@@ -142,15 +153,10 @@ func (c *ComponentCompiler) ProcessComponentTags(template string, ctx *executor.
 		slots := make(map[string]string)
 		trimmedContent := strings.TrimSpace(content)
 		if trimmedContent != "" {
-			slotEngine := tmpl.NewEngine(ctx)
-			renderedSlot, err := slotEngine.Render(trimmedContent, nil)
-			if err != nil {
-				return fmt.Sprintf("<!-- Error rendering slot: %v -->", err)
-			}
-			slots["default"] = renderedSlot
+			slots["default"] = trimmedContent
 		}
 
-		rendered, err := c.Compile(componentPath, props, slots)
+		rendered, err := c.CompileWithContext(componentPath, props, slots, ctx)
 		if err != nil {
 			return fmt.Sprintf("<!-- Error rendering %s: %v -->", componentName, err)
 		}
@@ -173,7 +179,7 @@ func (c *ComponentCompiler) ProcessComponentTags(template string, ctx *executor.
 
 		props := c.parseAttributes(attrs, ctx)
 
-		rendered, err := c.Compile(componentPath, props, make(map[string]string))
+		rendered, err := c.CompileWithContext(componentPath, props, make(map[string]string), ctx)
 		if err != nil {
 			return fmt.Sprintf("<!-- Error rendering %s: %v -->", componentName, err)
 		}
@@ -196,7 +202,7 @@ func (c *ComponentCompiler) parseAttributes(attrs string, ctx *executor.Context)
 			if val, ok := ctx.Get(varName); ok {
 				props[match[1]] = val
 			} else {
-				props[match[1]] = varName
+				props[match[1]] = "{" + varName + "}"
 			}
 		} else if match[3] != "" {
 			props[match[3]] = match[4]

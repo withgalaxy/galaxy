@@ -1,17 +1,11 @@
 ---
-import "github.com/cameron-webmatter/galaxy/pkg/content"
-
 var title = "My Blog"
 var subtitle = "Thoughts on Go, web development, and more"
 
-collections := content.NewCollections("./src/content")
-posts, _ := collections.GetCollection("blog")
-
-var publishedPosts = []interface{}{}
-for _, post := range posts {
-	if !post.GetBool("draft") {
-		publishedPosts = append(publishedPosts, post)
-	}
+var publishedPosts = []interface{}{
+	map[string]interface{}{"title": "Getting Started with Galaxy", "slug": "getting-started-with-galaxy", "pubDate": "2024-01-15"},
+	map[string]interface{}{"title": "Markdown Power", "slug": "markdown-power", "pubDate": "2024-01-16"},
+	map[string]interface{}{"title": "Advanced Routing", "slug": "advanced-routing", "pubDate": "2024-01-17"},
 }
 ---
 
@@ -24,13 +18,9 @@ for _, post := range posts {
 
 		<div class="blog-list">
 			<article class="post-card" galaxy:for={post in publishedPosts}>
-				<h2><a href="/blog/{post.Slug}">{post.GetString("title")}</a></h2>
+				<h2><a href="/blog/{post.slug}">{post.title}</a></h2>
 				<div class="meta">
-					<time>{post.GetString("pubDate")}</time>
-					<span class="author" galaxy:if={post.GetString("author")}>by {post.GetString("author")}</span>
-				</div>
-				<div class="tags" galaxy:if={post.GetStringSlice("tags")}>
-					<span class="tag" galaxy:for={tag in post.GetStringSlice("tags")}>{tag}</span>
+					<time>{post.pubDate}</time>
 				</div>
 			</article>
 		</div>

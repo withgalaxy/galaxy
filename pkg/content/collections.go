@@ -16,8 +16,23 @@ type Collections struct {
 }
 
 func NewCollections(contentDir string) *Collections {
+	// If path doesn't exist, try resolving relative to project root by walking up
+	resolvedDir := contentDir
+	if _, err := os.Stat(contentDir); os.IsNotExist(err) {
+		// Try walking up to find the path
+		cwd, _ := os.Getwd()
+		for i := 0; i < 3; i++ { // Try up to 3 levels
+			testPath := filepath.Join(cwd, contentDir)
+			if _, err := os.Stat(testPath); err == nil {
+				resolvedDir = testPath
+				break
+			}
+			cwd = filepath.Join(cwd, "..")
+		}
+	}
+
 	return &Collections{
-		ContentDir: contentDir,
+		ContentDir: resolvedDir,
 		configs:    make(map[string]CollectionConfig),
 		cache:      make(map[string][]*Entry),
 	}

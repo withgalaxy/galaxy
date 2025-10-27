@@ -13,6 +13,10 @@ import (
 
 type PackageFunc func(args ...interface{}) (interface{}, error)
 
+type Tuple struct {
+	Values []interface{}
+}
+
 var (
 	globalFuncs      = make(map[string]PackageFunc)
 	globalFuncsMutex sync.RWMutex
@@ -37,9 +41,36 @@ type Context struct {
 }
 
 type GalaxyAPI struct {
-	ctx    *Context
-	Params map[string]interface{}
-	Locals map[string]interface{}
+	ctx     *Context
+	Params  map[string]interface{}
+	Locals  map[string]interface{}
+	Content interface{} // ContentAPI wrapper
+}
+
+// contentAPIWrapper provides Galaxy.Content.Get() and Galaxy.Content.GetCollection()
+type contentAPIWrapper struct {
+	ctx *Context
+}
+
+func (w *contentAPIWrapper) Get(collectionName, slug string) map[string]interface{} {
+	// Call the registered global function
+	if fn, ok := w.ctx.PackageFuncs["Galaxy.Content.Get"]; ok {
+		result, _ := fn(collectionName, slug)
+		if m, ok := result.(map[string]interface{}); ok {
+			return m
+		}
+	}
+	return nil
+}
+
+func (w *contentAPIWrapper) GetCollection(collectionName string) []map[string]interface{} {
+	if fn, ok := w.ctx.PackageFuncs["Galaxy.Content.GetCollection"]; ok {
+		result, _ := fn(collectionName)
+		if arr, ok := result.([]map[string]interface{}); ok {
+			return arr
+		}
+	}
+	return nil
 }
 
 func (g *GalaxyAPI) Redirect(url string, status int) {
@@ -69,8 +100,51 @@ func NewContext() *Context {
 		Params: make(map[string]interface{}),
 		Locals: ctx.Locals,
 	}
+
+	// Create a wrapper that will lazily initialize Content API
+	galaxyAPI.Content = &contentAPIWrapper{ctx: ctx}
+
 	ctx.Variables["Galaxy"] = galaxyAPI
 	return ctx
+}
+
+func (c *Context) Clone() *Context {
+	clone := &Context{
+		Variables:      make(map[string]interface{}),
+		Props:          make(map[string]interface{}),
+		Slots:          make(map[string]string),
+		Request:        c.Request,
+		Locals:         make(map[string]any),
+		RedirectURL:    c.RedirectURL,
+		RedirectStatus: c.RedirectStatus,
+		ShouldRedirect: c.ShouldRedirect,
+		PackageFuncs:   make(map[string]PackageFunc),
+	}
+
+	for k, v := range c.Variables {
+		clone.Variables[k] = v
+	}
+	for k, v := range c.Props {
+		clone.Props[k] = v
+	}
+	for k, v := range c.Slots {
+		clone.Slots[k] = v
+	}
+	for k, v := range c.Locals {
+		clone.Locals[k] = v
+	}
+	for k, v := range c.PackageFuncs {
+		clone.PackageFuncs[k] = v
+	}
+
+	galaxyAPI := &GalaxyAPI{
+		ctx:    clone,
+		Params: make(map[string]interface{}),
+		Locals: clone.Locals,
+	}
+	clone.Variables["Galaxy"] = galaxyAPI
+
+	return clone
 }
 
 func (c *Context) RegisterPackageFunc(pkg, name string, fn PackageFunc) {
@@ -159,6 +233,8 @@ func (c *Context) executeStmt(stmt ast.Stmt) error {
 	switch s := stmt.(type) {
 	case *ast.IfStmt:
 		return c.executeIfStmt(s)
+	case *ast.RangeStmt:
+		return c.executeRangeStmt(s)
 	case *ast.ExprStmt:
 		_, err := c.evalExpr(s.X)
 		return err
@@ -180,6 +256,51 @@ func (c *Context) executeStmt(stmt ast.Stmt) error {
 	default:
 		return nil
 	}
+}
+
+func (c *Context) executeRangeStmt(stmt *ast.RangeStmt) error {
+	rangeVal, err := c.evalExpr(stmt.X)
+	if err != nil {
+		return err
+	}
+
+	if rangeVal == nil {
+		return fmt.Errorf("range over nil value")
+	}
+
+	v := reflect.ValueOf(rangeVal)
+	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
+		return fmt.Errorf("range over non-slice/array type: got %T (kind: %v)", rangeVal, v.Kind())
+	}
+
+	var keyIdent, valueIdent *ast.Ident
+	if stmt.Key != nil {
+		if ident, ok := stmt.Key.(*ast.Ident); ok {
+			keyIdent = ident
+		}
+	}
+	if stmt.Value != nil {
+		if ident, ok := stmt.Value.(*ast.Ident); ok {
+			valueIdent = ident
+		}
+	}
+
+	for i := 0; i < v.Len(); i++ {
+		if keyIdent != nil && keyIdent.Name != "_" {
+			c.Variables[keyIdent.Name] = i
+		}
+		if valueIdent != nil && valueIdent.Name != "_" {
+			c.Variables[valueIdent.Name] = v.Index(i).Interface()
+		}
+
+		for _, s := range stmt.Body.List {
+			if err := c.executeStmt(s); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (c *Context) executeIfStmt(stmt *ast.IfStmt) error {
@@ -234,10 +355,10 @@ func (c *Context) executeAssignStmt(stmt *ast.AssignStmt) error {
 					return err
 				}
 
-				// Check if result is a multi-value tuple
-				if resultSlice, ok := result.([]interface{}); ok && len(resultSlice) == 2 {
-					c.Variables[ident1.Name] = resultSlice[0]
-					c.Variables[ident2.Name] = resultSlice[1]
+				// Check if result is a tuple from function call
+				if tuple, ok := result.(Tuple); ok && len(tuple.Values) == 2 {
+					c.Variables[ident1.Name] = tuple.Values[0]
+					c.Variables[ident2.Name] = tuple.Values[1]
 				} else {
 					c.Variables[ident1.Name] = result
 					c.Variables[ident2.Name] = nil
@@ -257,6 +378,13 @@ func (c *Context) executeAssignStmt(stmt *ast.AssignStmt) error {
 			return err
 		}
 
+		// For single-variable assignment from function, unwrap tuple
+		if len(stmt.Lhs) == 1 && len(stmt.Rhs) == 1 {
+			if tuple, ok := val.(Tuple); ok && len(tuple.Values) > 0 {
+				val = tuple.Values[0]
+			}
+		}
+
 		if ident, ok := lhs.(*ast.Ident); ok {
 			c.Variables[ident.Name] = val
 		}
@@ -272,10 +400,10 @@ func (c *Context) processVarSpec(spec *ast.ValueSpec) error {
 			return err
 		}
 
-		// Check if result is a multi-value tuple (slice with 2 elements)
-		if resultSlice, ok := result.([]interface{}); ok && len(resultSlice) == 2 {
-			c.Variables[spec.Names[0].Name] = resultSlice[0]
-			c.Variables[spec.Names[1].Name] = resultSlice[1]
+		// Check if result is a tuple from function call
+		if tuple, ok := result.(Tuple); ok && len(tuple.Values) == 2 {
+			c.Variables[spec.Names[0].Name] = tuple.Values[0]
+			c.Variables[spec.Names[1].Name] = tuple.Values[1]
 		} else {
 			c.Variables[spec.Names[0].Name] = result
 			c.Variables[spec.Names[1].Name] = nil
@@ -288,13 +416,6 @@ func (c *Context) processVarSpec(spec *ast.ValueSpec) error {
 			value, err := c.evalExpr(spec.Values[i])
 			if err != nil {
 				return err
-			}
-			// If single var gets tuple from PackageFunc/method, unwrap first value
-			if len(spec.Names) == 1 {
-				if tuple, ok := value.([]interface{}); ok && len(tuple) == 2 {
-					// Unwrap tuple for single assignment
-					value = tuple[0]
-				}
 			}
 			c.Variables[name.Name] = value
 		}
@@ -545,7 +666,7 @@ func (c *Context) evalCallExpr(expr *ast.CallExpr) (interface{}, error) {
 				}
 				result, fnErr := fn(args...)
 				// Return as tuple for multi-value assignment (value, error)
-				return []interface{}{result, fnErr}, nil
+				return Tuple{Values: []interface{}{result, fnErr}}, nil
 			}
 		}
 		return nil, nil
@@ -565,6 +686,34 @@ func (c *Context) evalCallExpr(expr *ast.CallExpr) (interface{}, error) {
 			if v.Kind() == reflect.Slice || v.Kind() == reflect.Array || v.Kind() == reflect.String {
 				return int64(v.Len()), nil
 			}
+		case "append":
+			if len(expr.Args) < 2 {
+				return nil, fmt.Errorf("append expects at least 2 arguments")
+			}
+			slice, err := c.evalExpr(expr.Args[0])
+			if err != nil {
+				return nil, err
+			}
+
+			result := make([]interface{}, 0)
+			if slice != nil {
+				v := reflect.ValueOf(slice)
+				if v.Kind() == reflect.Slice {
+					for i := 0; i < v.Len(); i++ {
+						result = append(result, v.Index(i).Interface())
+					}
+				}
+			}
+
+			for i := 1; i < len(expr.Args); i++ {
+				val, err := c.evalExpr(expr.Args[i])
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, val)
+			}
+
+			return result, nil
 		}
 	}
 	return nil, nil
