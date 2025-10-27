@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cameron-webmatter/galaxy/pkg/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
 	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
 	"github.com/cameron-webmatter/galaxy/pkg/hmr"
@@ -20,6 +21,7 @@ type GalaxyPlugin struct {
 	Compiler         *compiler.ComponentCompiler
 	Router           *router.Router
 	EndpointCompiler *endpoints.EndpointCompiler
+	Bundler          *assets.Bundler
 	Cache            *server.PageCache
 	ChangeTracker    *hmr.ChangeTracker
 	ComponentTracker *hmr.ComponentTracker
@@ -31,11 +33,14 @@ type GalaxyPlugin struct {
 
 func NewGalaxyPlugin(rootDir, pagesDir, publicDir string) *GalaxyPlugin {
 	srcDir := filepath.Dir(pagesDir)
+	bundler := assets.NewBundler(".galaxy")
+	bundler.DevMode = true
 
 	return &GalaxyPlugin{
 		Compiler:         compiler.NewComponentCompiler(srcDir),
 		Router:           router.NewRouter(pagesDir),
 		EndpointCompiler: endpoints.NewCompiler(rootDir, ".galaxy/endpoints"),
+		Bundler:          bundler,
 		Cache:            server.NewPageCache(),
 		ChangeTracker:    hmr.NewChangeTracker(),
 		ComponentTracker: hmr.NewComponentTracker(),

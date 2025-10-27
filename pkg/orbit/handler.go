@@ -3,9 +3,11 @@ package orbit
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
 	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/cameron-webmatter/galaxy/pkg/parser"
 	"github.com/cameron-webmatter/galaxy/pkg/router"
 	"github.com/cameron-webmatter/galaxy/pkg/server"
 )
@@ -53,6 +55,23 @@ func (p *GalaxyPlugin) handlePage(w http.ResponseWriter, r *http.Request, route 
 	}
 
 	p.ComponentTracker.TrackPageComponents(route.FilePath, p.Compiler.UsedComponents)
+
+	content, err := os.ReadFile(route.FilePath)
+	if err == nil {
+		comp, parseErr := parser.Parse(string(content))
+		if parseErr == nil {
+			cssPath, _ := p.Bundler.BundleStyles(comp, route.FilePath)
+			jsPath, _ := p.Bundler.BundleScripts(comp, route.FilePath)
+			wasmAssets, _ := p.Bundler.BundleWasmScripts(comp, route.FilePath)
+
+			scopeID := ""
+			if cssPath != "" {
+				scopeID = p.Bundler.GenerateScopeID(route.FilePath)
+			}
+
+			html = p.Bundler.InjectAssetsWithWasm(html, cssPath, jsPath, scopeID, wasmAssets)
+		}
+	}
 
 	p.Cache.Set(cacheKey, &server.PagePlugin{
 		Template: html,
