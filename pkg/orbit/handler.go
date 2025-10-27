@@ -20,7 +20,7 @@ func (p *GalaxyPlugin) handleRoute(w http.ResponseWriter, r *http.Request, route
 	case router.RouteStatic, router.RouteDynamic, router.RouteCatchAll:
 		p.handlePage(w, r, route, params)
 	case router.RouteMarkdown:
-		http.Error(w, "Markdown not implemented in Orbit plugin yet", http.StatusNotImplemented)
+		p.handleMarkdown(w, r, route, params)
 	default:
 		http.Error(w, "Unknown route type", http.StatusInternalServerError)
 	}
