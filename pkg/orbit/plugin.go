@@ -11,6 +11,7 @@ import (
 	"github.com/withgalaxy/galaxy/pkg/compiler"
 	"github.com/withgalaxy/galaxy/pkg/endpoints"
 	"github.com/withgalaxy/galaxy/pkg/hmr"
+	"github.com/withgalaxy/galaxy/pkg/lifecycle"
 	"github.com/withgalaxy/galaxy/pkg/middleware"
 	"github.com/withgalaxy/galaxy/pkg/router"
 	"github.com/withgalaxy/galaxy/pkg/server"
@@ -30,6 +31,7 @@ type GalaxyPlugin struct {
 	MiddlewareCompiler *middleware.MiddlewareCompiler
 	MiddlewareChain    *middleware.Chain
 	LoadedMiddleware   *middleware.LoadedMiddleware
+	Lifecycle          *lifecycle.Lifecycle
 
 	RootDir   string
 	PagesDir  string
@@ -58,6 +60,14 @@ func NewGalaxyPlugin(rootDir, pagesDir, publicDir string) *GalaxyPlugin {
 	middlewarePath := filepath.Join(srcDir, "middleware.go")
 	if _, err := os.Stat(middlewarePath); err == nil {
 		p.loadMiddleware()
+	}
+
+	if lifecycle.DetectLifecycle(srcDir) {
+		loaded, err := lifecycle.LoadFromDir(srcDir)
+		if err == nil && loaded != nil {
+			p.Lifecycle = lifecycle.NewLifecycle()
+			p.Lifecycle.Register(loaded)
+		}
 	}
 
 	return p
@@ -93,6 +103,13 @@ func (p *GalaxyPlugin) ConfigResolved(config any) error {
 		return fmt.Errorf("discover routes: %w", err)
 	}
 	p.Router.Sort()
+
+	if p.Lifecycle != nil {
+		if err := p.Lifecycle.ExecuteStartup(); err != nil {
+			return fmt.Errorf("lifecycle startup: %w", err)
+		}
+	}
+
 	return nil
 }
 
