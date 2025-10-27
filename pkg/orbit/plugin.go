@@ -3,6 +3,7 @@ package orbit
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/withgalaxy/galaxy/pkg/compiler"
 	"github.com/withgalaxy/galaxy/pkg/endpoints"
 	"github.com/withgalaxy/galaxy/pkg/hmr"
+	"github.com/withgalaxy/galaxy/pkg/middleware"
 	"github.com/withgalaxy/galaxy/pkg/router"
 	"github.com/withgalaxy/galaxy/pkg/server"
 	orbit "github.com/withgalaxy/orbit/plugin"
@@ -18,13 +20,16 @@ import (
 type GalaxyPlugin struct {
 	orbit.BasePlugin
 
-	Compiler         *compiler.ComponentCompiler
-	Router           *router.Router
-	EndpointCompiler *endpoints.EndpointCompiler
-	Bundler          *assets.Bundler
-	Cache            *server.PageCache
-	ChangeTracker    *hmr.ChangeTracker
-	ComponentTracker *hmr.ComponentTracker
+	Compiler           *compiler.ComponentCompiler
+	Router             *router.Router
+	EndpointCompiler   *endpoints.EndpointCompiler
+	Bundler            *assets.Bundler
+	Cache              *server.PageCache
+	ChangeTracker      *hmr.ChangeTracker
+	ComponentTracker   *hmr.ComponentTracker
+	MiddlewareCompiler *middleware.MiddlewareCompiler
+	MiddlewareChain    *middleware.Chain
+	LoadedMiddleware   *middleware.LoadedMiddleware
 
 	RootDir   string
 	PagesDir  string
@@ -36,18 +41,47 @@ func NewGalaxyPlugin(rootDir, pagesDir, publicDir string) *GalaxyPlugin {
 	bundler := assets.NewBundler(".galaxy")
 	bundler.DevMode = true
 
-	return &GalaxyPlugin{
-		Compiler:         compiler.NewComponentCompiler(srcDir),
-		Router:           router.NewRouter(pagesDir),
-		EndpointCompiler: endpoints.NewCompiler(rootDir, ".galaxy/endpoints"),
-		Bundler:          bundler,
-		Cache:            server.NewPageCache(),
-		ChangeTracker:    hmr.NewChangeTracker(),
-		ComponentTracker: hmr.NewComponentTracker(),
-		RootDir:          rootDir,
-		PagesDir:         pagesDir,
-		PublicDir:        publicDir,
+	p := &GalaxyPlugin{
+		Compiler:           compiler.NewComponentCompiler(srcDir),
+		Router:             router.NewRouter(pagesDir),
+		EndpointCompiler:   endpoints.NewCompiler(rootDir, ".galaxy/endpoints"),
+		Bundler:            bundler,
+		Cache:              server.NewPageCache(),
+		ChangeTracker:      hmr.NewChangeTracker(),
+		ComponentTracker:   hmr.NewComponentTracker(),
+		MiddlewareCompiler: middleware.NewCompiler(rootDir, ".galaxy/middleware"),
+		RootDir:            rootDir,
+		PagesDir:           pagesDir,
+		PublicDir:          publicDir,
 	}
+
+	middlewarePath := filepath.Join(srcDir, "middleware.go")
+	if _, err := os.Stat(middlewarePath); err == nil {
+		p.loadMiddleware()
+	}
+
+	return p
+}
+
+func (p *GalaxyPlugin) loadMiddleware() error {
+	srcDir := filepath.Dir(p.PagesDir)
+	middlewarePath := filepath.Join(srcDir, "middleware.go")
+
+	loaded, err := p.MiddlewareCompiler.Load(middlewarePath)
+	if err != nil {
+		return err
+	}
+
+	p.LoadedMiddleware = loaded
+	p.MiddlewareChain = middleware.NewChain()
+
+	if loaded.Sequence != nil && len(loaded.Sequence) > 0 {
+		for _, fn := range loaded.Sequence {
+			p.MiddlewareChain.Use(fn)
+		}
+	}
+
+	return nil
 }
 
 func (p *GalaxyPlugin) Name() string {
@@ -67,6 +101,13 @@ func (p *GalaxyPlugin) ConfigureServer(server any) error {
 }
 
 func (p *GalaxyPlugin) HandleHotUpdate(file string) ([]string, error) {
+	if strings.HasSuffix(file, "middleware.go") {
+		if err := p.loadMiddleware(); err != nil {
+			return nil, fmt.Errorf("reload middleware: %w", err)
+		}
+		return []string{file}, nil
+	}
+
 	if !strings.HasSuffix(file, ".gxc") {
 		return nil, nil
 	}
@@ -95,6 +136,20 @@ func (p *GalaxyPlugin) Middleware() orbit.Middleware {
 			route, params := p.Router.Match(r.URL.Path)
 			if route == nil {
 				next.ServeHTTP(w, r)
+				return
+			}
+
+			if p.MiddlewareChain != nil {
+				mwCtx := middleware.NewContext(w, r)
+				mwCtx.Params = params
+
+				err := p.MiddlewareChain.Execute(mwCtx, func(ctx *middleware.Context) error {
+					p.handleRoute(ctx.Response, ctx.Request, route, params)
+					return nil
+				})
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
 				return
 			}
 
