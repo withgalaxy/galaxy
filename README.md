@@ -19,7 +19,7 @@ A blazing-fast, Go-powered web framework inspired by Astro. Build content-focuse
 
 ```bash
 # Clone and build
-git clone https://github.com/cameron-webmatter/galaxy
+git clone https://github.com/withgalaxy/galaxy
 cd galaxy
 go build -o galaxy ./cmd/galaxy
 
@@ -167,7 +167,7 @@ title: string = "My Page"
 
 <script>
 import "fmt"
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 count := 0
 btn := wasmdom.GetElementById("myButton")
@@ -349,7 +349,7 @@ package src
 
 import (
     "time"
-    "github.com/cameron-webmatter/galaxy/pkg/middleware"
+    "github.com/withgalaxy/galaxy/pkg/middleware"
 )
 
 func OnRequest(ctx *middleware.Context, next func() error) error {
@@ -362,7 +362,7 @@ func OnRequest(ctx *middleware.Context, next func() error) error {
 ```go
 package middleware
 
-import "github.com/cameron-webmatter/galaxy/pkg/middleware"
+import "github.com/withgalaxy/galaxy/pkg/middleware"
 
 func LoggingMiddleware(ctx *middleware.Context, next func() error) error {
     // logging
@@ -398,7 +398,7 @@ Create Go files in `src/pages/api/`:
 // src/pages/api/hello.go
 package api
 
-import "github.com/cameron-webmatter/galaxy/pkg/endpoints"
+import "github.com/withgalaxy/galaxy/pkg/endpoints"
 
 func GET(ctx *endpoints.Context) error {
     return ctx.JSON(200, map[string]string{
@@ -438,7 +438,7 @@ var title = "WASM Counter"
 
 <script>
 import "fmt"
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 count := 0
 incBtn := wasmdom.GetElementById("inc")
@@ -553,7 +553,7 @@ galaxy build
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/cameron-webmatter/galaxy
+git clone https://github.com/withgalaxy/galaxy
 cd galaxy
 ```
 

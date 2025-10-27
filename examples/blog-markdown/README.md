@@ -69,7 +69,7 @@ Your content here with **markdown** formatting!
 Query and filter posts:
 
 ```go
-import "github.com/cameron-webmatter/galaxy/pkg/content"
+import "github.com/withgalaxy/galaxy/pkg/content"
 
 collections := content.NewCollections("./src/content")
 posts, _ := collections.GetCollection("blog")
