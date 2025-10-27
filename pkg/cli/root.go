@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version = "0.3.0"
+	Version = "0.15.0"
 	cfgFile string
 	rootDir string
 	verbose bool
