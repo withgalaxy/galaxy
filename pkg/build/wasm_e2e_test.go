@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cameron-webmatter/galaxy/pkg/config"
+	"github.com/withgalaxy/galaxy/pkg/config"
 )
 
 func TestSSGBuildWithWasm(t *testing.T) {
@@ -38,7 +38,7 @@ var title = "WASM SSG Test"
 
 <script>
 import "fmt"
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 clicks := 0
 btn := wasmdom.GetElementById("btn")
@@ -176,14 +176,14 @@ var title = "Multiple WASM Scripts"
 </html>
 
 <script>
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 output := wasmdom.GetElementById("output1")
 output.SetTextContent("Script 1 loaded")
 </script>
 
 <script>
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 output := wasmdom.GetElementById("output2")
 output.SetTextContent("Script 2 loaded")
@@ -272,7 +272,7 @@ document.getElementById('js-output').textContent = "JS loaded";
 </script>
 
 <script>
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 output := wasmdom.GetElementById("wasm-output")
 output.SetTextContent("WASM loaded")

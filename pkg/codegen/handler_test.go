@@ -3,7 +3,7 @@ package codegen
 import (
 	"testing"
 
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 func TestTransformContentEntryAccess(t *testing.T) {

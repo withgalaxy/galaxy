@@ -76,7 +76,7 @@ func TestCompileWithImports(t *testing.T) {
 	compiler := NewCompiler(tmpDir, cacheDir)
 
 	script := `import "fmt"
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 wasmdom.ConsoleLog("Testing WASM DOM")
 fmt.Println("Multiple imports")`

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/codegen"
-	"github.com/cameron-webmatter/galaxy/pkg/config"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/codegen"
+	"github.com/withgalaxy/galaxy/pkg/config"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 type HybridBuilder struct {

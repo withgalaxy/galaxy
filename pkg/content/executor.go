@@ -1,7 +1,7 @@
 package content
 
 import (
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/executor"
 )
 
 func init() {

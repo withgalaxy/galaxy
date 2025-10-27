@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/executor"
 )
 
 func TestComparisonEqual(t *testing.T) {

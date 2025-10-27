@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/parser"
 )
 
 type ComponentDiff struct {

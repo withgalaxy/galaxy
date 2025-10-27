@@ -124,7 +124,7 @@ func (c *MiddlewareCompiler) compile(filePath string, hasOnRequest, hasSequence 
 	pluginSrc := fmt.Sprintf(`package main
 
 import (
-	"github.com/cameron-webmatter/galaxy/pkg/middleware"
+	"github.com/withgalaxy/galaxy/pkg/middleware"
 	usermw "%s"
 )
 

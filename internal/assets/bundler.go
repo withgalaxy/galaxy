@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/internal/wasm"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/plugins"
+	"github.com/withgalaxy/galaxy/internal/wasm"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/plugins"
 )
 
 type Bundler struct {

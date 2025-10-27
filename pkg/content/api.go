@@ -2,7 +2,7 @@ package content
 
 import (
 	"fmt"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/executor"
 	"os"
 	"path/filepath"
 )

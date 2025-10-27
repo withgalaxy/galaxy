@@ -4,7 +4,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/parser"
 )
 
 type ChangeTracker struct {

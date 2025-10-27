@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"plugin"
 
-	"github.com/cameron-webmatter/galaxy/pkg/codegen"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/codegen"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/router"
 	"strings"
 )
 
@@ -94,8 +94,8 @@ func (pc *PluginCompiler) CompilePage(route *router.Route, comp *parser.Componen
 import (
 	"fmt"
 	"net/http"
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/template"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/template"
 	%s
 )
 
@@ -138,7 +138,7 @@ func init() {
 
 go 1.23
 
-replace github.com/cameron-webmatter/galaxy => %s
+replace github.com/withgalaxy/galaxy => %s
 `, uniqueModuleName, pc.GalaxyPath)
 
 	// Add project module replace if it exists
@@ -146,7 +146,7 @@ replace github.com/cameron-webmatter/galaxy => %s
 		goMod += fmt.Sprintf("\nreplace %s => %s\n", projectModule, projectPath)
 	}
 
-	goMod += "\nrequire github.com/cameron-webmatter/galaxy v0.0.0\n"
+	goMod += "\nrequire github.com/withgalaxy/galaxy v0.0.0\n"
 
 	// Require project module if it exists
 	if projectModule != "" {

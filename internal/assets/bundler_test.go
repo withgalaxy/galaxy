@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/parser"
 )
 
 func TestNewBundler(t *testing.T) {

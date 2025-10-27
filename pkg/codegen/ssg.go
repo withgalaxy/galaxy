@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 type SSGCodegenBuilder struct {
@@ -123,8 +123,8 @@ import (
 	"os"
 	"path/filepath"
 	
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/template"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/template"
 	%s
 	"%s/runtime"
 )
@@ -217,9 +217,9 @@ func (b *SSGCodegenBuilder) generateGoMod(buildDir string) error {
 
 go 1.23
 
-replace github.com/cameron-webmatter/galaxy => %s
+replace github.com/withgalaxy/galaxy => %s
 
-require github.com/cameron-webmatter/galaxy v0.0.0
+require github.com/withgalaxy/galaxy v0.0.0
 `, b.ModuleName, galaxyPath)
 
 	return os.WriteFile(filepath.Join(buildDir, "go.mod"), []byte(goMod), 0644)

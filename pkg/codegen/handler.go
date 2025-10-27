@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/executor"
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
-	"github.com/cameron-webmatter/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/executor"
+	"github.com/withgalaxy/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/router"
 )
 
 func NewHandlerGenerator(comp *parser.Component, route *router.Route, moduleName, baseDir string) *HandlerGenerator {
@@ -73,7 +73,7 @@ func (g *HandlerGenerator) extractImports() []string {
 			}
 		}
 		if !hasContent {
-			result = append(result, `"github.com/cameron-webmatter/galaxy/pkg/content"`)
+			result = append(result, `"github.com/withgalaxy/galaxy/pkg/content"`)
 		}
 	}
 

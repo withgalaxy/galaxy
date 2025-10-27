@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/pkg/parser"
+	"github.com/withgalaxy/galaxy/pkg/parser"
 	"go.lsp.dev/protocol"
 )
 
