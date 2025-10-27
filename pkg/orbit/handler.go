@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cameron-webmatter/galaxy/pkg/endpoints"
 	"github.com/cameron-webmatter/galaxy/pkg/executor"
 	"github.com/cameron-webmatter/galaxy/pkg/router"
 	"github.com/cameron-webmatter/galaxy/pkg/server"
@@ -11,7 +12,7 @@ import (
 
 func (p *GalaxyPlugin) handleRoute(w http.ResponseWriter, r *http.Request, route *router.Route, params map[string]string) {
 	if route.IsEndpoint {
-		http.Error(w, "Endpoints not implemented in Orbit plugin yet", http.StatusNotImplemented)
+		p.handleEndpoint(w, r, route, params)
 		return
 	}
 
@@ -57,4 +58,25 @@ func (p *GalaxyPlugin) handlePage(w http.ResponseWriter, r *http.Request, route 
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
+}
+
+func (p *GalaxyPlugin) handleEndpoint(w http.ResponseWriter, r *http.Request, route *router.Route, params map[string]string) {
+	loaded, err := p.EndpointCompiler.Load(route.FilePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	method := endpoints.HTTPMethod(r.Method)
+	handler, ok := loaded.Handlers[method]
+	if !ok {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := endpoints.NewContext(w, r, params, nil)
+
+	if err := handler(ctx); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
