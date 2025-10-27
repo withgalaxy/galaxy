@@ -78,6 +78,14 @@ func (p *GalaxyPlugin) HandleHotUpdate(file string) ([]string, error) {
 
 	p.Cache.Invalidate(file)
 
+	affectedPages := p.ComponentTracker.GetAffectedPages(file)
+	if len(affectedPages) > 0 {
+		for _, page := range affectedPages {
+			p.Cache.Invalidate(page)
+		}
+		return affectedPages, nil
+	}
+
 	return []string{file}, nil
 }
 
