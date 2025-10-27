@@ -52,6 +52,8 @@ func (p *GalaxyPlugin) handlePage(w http.ResponseWriter, r *http.Request, route 
 		return
 	}
 
+	p.ComponentTracker.TrackPageComponents(route.FilePath, p.Compiler.UsedComponents)
+
 	p.Cache.Set(cacheKey, &server.PagePlugin{
 		Template: html,
 	})
