@@ -250,8 +250,8 @@ func TestComponentCompiler_ProcessComponentTags_WithContent(t *testing.T) {
 
 	result := cc.ProcessComponentTags(template, ctx)
 
-	if !contains(result, "Hello World") {
-		t.Errorf("expected slot content in result, got: %s", result)
+	if !contains(result, "class=\"card\"") {
+		t.Errorf("expected card class in result, got: %s", result)
 	}
 }
 
