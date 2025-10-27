@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	devPort    int
-	devHost    string
-	devOpen    bool
-	devVerbose bool
-	devCodegen bool
+	devPort      int
+	devHost      string
+	devOpen      bool
+	devVerbose   bool
+	devCodegen   bool
+	devNoCodegen bool
 )
 
 var devCmd = &cobra.Command{
@@ -35,6 +36,7 @@ func init() {
 	devCmd.Flags().BoolVar(&devOpen, "open", false, "open browser on start")
 	devCmd.Flags().BoolVar(&devVerbose, "verbose", false, "enable request logging")
 	devCmd.Flags().BoolVar(&devCodegen, "codegen", true, "use codegen server for production-like performance")
+	devCmd.Flags().BoolVar(&devNoCodegen, "no-codegen", false, "disable codegen server (interpreted mode)")
 }
 
 func runDev(cmd *cobra.Command, args []string) error {
@@ -87,7 +89,11 @@ func runDev(cmd *cobra.Command, args []string) error {
 	}
 
 	galaxyPlugin := galaxyOrbit.NewGalaxyPlugin(cwd, pagesDir, publicDir)
-	galaxyPlugin.UseCodegen = devCodegen
+	if devNoCodegen {
+		galaxyPlugin.UseCodegen = false
+	} else {
+		galaxyPlugin.UseCodegen = devCodegen
+	}
 	srv.Use(galaxyPlugin)
 	srv.Plugins.AddMiddleware(galaxyPlugin.Middleware())
 
