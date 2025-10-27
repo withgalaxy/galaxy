@@ -18,6 +18,7 @@ var (
 	devHost    string
 	devOpen    bool
 	devVerbose bool
+	devCodegen bool
 )
 
 var devCmd = &cobra.Command{
@@ -33,6 +34,7 @@ func init() {
 	devCmd.Flags().StringVar(&devHost, "host", "localhost", "host to bind to")
 	devCmd.Flags().BoolVar(&devOpen, "open", false, "open browser on start")
 	devCmd.Flags().BoolVar(&devVerbose, "verbose", false, "enable request logging")
+	devCmd.Flags().BoolVar(&devCodegen, "codegen", false, "use codegen server (experimental)")
 }
 
 func runDev(cmd *cobra.Command, args []string) error {
@@ -85,6 +87,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 	}
 
 	galaxyPlugin := galaxyOrbit.NewGalaxyPlugin(cwd, pagesDir, publicDir)
+	galaxyPlugin.UseCodegen = devCodegen
 	srv.Use(galaxyPlugin)
 	srv.Plugins.AddMiddleware(galaxyPlugin.Middleware())
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/withgalaxy/galaxy/pkg/assets"
+	"github.com/withgalaxy/galaxy/pkg/codegen"
 	"github.com/withgalaxy/galaxy/pkg/compiler"
 	"github.com/withgalaxy/galaxy/pkg/endpoints"
 	"github.com/withgalaxy/galaxy/pkg/hmr"
@@ -32,6 +33,8 @@ type GalaxyPlugin struct {
 	MiddlewareChain    *middleware.Chain
 	LoadedMiddleware   *middleware.LoadedMiddleware
 	Lifecycle          *lifecycle.Lifecycle
+	UseCodegen         bool
+	CodegenPort        int
 
 	RootDir   string
 	PagesDir  string
@@ -104,12 +107,31 @@ func (p *GalaxyPlugin) ConfigResolved(config any) error {
 	}
 	p.Router.Sort()
 
+	if p.UseCodegen {
+		if err := p.buildCodegenServer(); err != nil {
+			return fmt.Errorf("codegen: %w", err)
+		}
+	}
+
 	if p.Lifecycle != nil {
 		if err := p.Lifecycle.ExecuteStartup(); err != nil {
 			return fmt.Errorf("lifecycle startup: %w", err)
 		}
 	}
 
+	return nil
+}
+
+func (p *GalaxyPlugin) buildCodegenServer() error {
+	fmt.Println("🔨 Building codegen server...")
+
+	builder := codegen.NewCodegenBuilder(p.Router.Routes, p.PagesDir, ".galaxy", "dev-server", p.PublicDir)
+	builder.Bundler = p.Bundler
+	if err := builder.Build(); err != nil {
+		return fmt.Errorf("build failed: %w", err)
+	}
+
+	fmt.Println("✅ Codegen server built")
 	return nil
 }
 
