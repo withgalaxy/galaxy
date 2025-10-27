@@ -34,7 +34,7 @@ func init() {
 	devCmd.Flags().StringVar(&devHost, "host", "localhost", "host to bind to")
 	devCmd.Flags().BoolVar(&devOpen, "open", false, "open browser on start")
 	devCmd.Flags().BoolVar(&devVerbose, "verbose", false, "enable request logging")
-	devCmd.Flags().BoolVar(&devCodegen, "codegen", false, "use codegen server (experimental)")
+	devCmd.Flags().BoolVar(&devCodegen, "codegen", true, "use codegen server for production-like performance")
 }
 
 func runDev(cmd *cobra.Command, args []string) error {
