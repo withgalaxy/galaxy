@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/internal/assets"
+	"github.com/cameron-webmatter/galaxy/pkg/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
 	"github.com/cameron-webmatter/galaxy/pkg/config"
 	"github.com/cameron-webmatter/galaxy/pkg/content"

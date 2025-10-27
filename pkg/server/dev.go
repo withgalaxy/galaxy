@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cameron-webmatter/galaxy/internal/assets"
+	"github.com/cameron-webmatter/galaxy/pkg/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/codegen"
 	"github.com/cameron-webmatter/galaxy/pkg/compiler"
 	"github.com/cameron-webmatter/galaxy/pkg/config"

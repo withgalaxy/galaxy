@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cameron-webmatter/galaxy/internal/assets"
+	"github.com/cameron-webmatter/galaxy/pkg/assets"
 	"github.com/cameron-webmatter/galaxy/pkg/codegen"
 	"github.com/cameron-webmatter/galaxy/pkg/config"
 	"github.com/cameron-webmatter/galaxy/pkg/parser"
