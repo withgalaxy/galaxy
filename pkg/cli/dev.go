@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cobra"
 	"github.com/withgalaxy/galaxy/pkg/config"
 	galaxyOrbit "github.com/withgalaxy/galaxy/pkg/orbit"
 	orbitConfig "github.com/withgalaxy/orbit/config"
 	"github.com/withgalaxy/orbit/dev_server"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -57,11 +57,26 @@ func runDev(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pages directory not found: %s", pagesDir)
 	}
 
-	cfg := orbitConfig.DefaultConfig()
+	orbitConfigPath := filepath.Join(cwd, "orbit.toml")
+	var cfg *orbitConfig.Config
+	if _, err := os.Stat(orbitConfigPath); err == nil {
+		cfg, err = orbitConfig.LoadConfig(orbitConfigPath)
+		if err != nil {
+			log.Printf("Warning: failed to load orbit.toml: %v", err)
+			cfg = orbitConfig.DefaultConfig()
+		}
+	} else {
+		cfg = orbitConfig.DefaultConfig()
+	}
+
 	cfg.Root = cwd
 	cfg.PublicDir = publicDir
-	cfg.Server.Port = devPort
-	cfg.Server.Host = devHost
+	if devPort != 5173 {
+		cfg.Server.Port = devPort
+	}
+	if devHost != "localhost" {
+		cfg.Server.Host = devHost
+	}
 	cfg.HMR.Enabled = true
 
 	srv, err := dev_server.New(cfg)
