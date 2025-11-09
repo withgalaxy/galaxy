@@ -8,6 +8,7 @@ func (g *MainGenerator) GenerateRuntime() string {
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	
 	"github.com/withgalaxy/galaxy/pkg/compiler"
@@ -18,15 +19,24 @@ import (
 
 var comp *compiler.ComponentCompiler
 var wasmManifest *wasm.WasmManifest
+var baseDir string
 
 func init() {
-	comp = compiler.NewComponentCompiler(".")
+	// Detect executable path
+	exePath, err := os.Executable()
+	if err == nil {
+		baseDir = filepath.Dir(exePath)
+	} else {
+		baseDir = "."
+	}
+	
+	comp = compiler.NewComponentCompiler(baseDir)
 	loadWasmManifest()
 }
 
 func loadWasmManifest() {
-	// Server runs from dist/server/, manifest is at _assets/wasm-manifest.json
-	data, err := os.ReadFile("_assets/wasm-manifest.json")
+	manifestPath := filepath.Join(baseDir, "_assets", "wasm-manifest.json")
+	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return
 	}
@@ -65,12 +75,6 @@ func InjectCSS(html, cssPath string) string {
 }
 
 func InjectWasmAssets(html, urlPath string) string {
-	// Inject HMR client in dev mode
-	if os.Getenv("DEV_MODE") == "true" {
-		hmrScript := "<script src=\"/__hmr/client.js\"></script>"
-		html = strings.Replace(html, "</head>", "\t" + hmrScript + "\n</head>", 1)
-	}
-	
 	if wasmManifest == nil {
 		// Manifest not loaded, try loading now
 		loadWasmManifest()
@@ -109,6 +113,13 @@ func InjectWasmAssets(html, urlPath string) string {
 		scripts = append(scripts, "<script src=\"" + js + "\"></script>")
 	}
 	
+	// Inject HMR client in dev mode at end of head
+	if os.Getenv("DEV_MODE") == "true" {
+		hmrScript := "\t<script src=\"/__hmr/client.js\"></script>"
+		html = strings.Replace(html, "</head>", hmrScript + "\n</head>", 1)
+	}
+	
+	// Inject WASM scripts at end of body
 	if len(scripts) > 0 {
 		injection := strings.Join(scripts, "\n\t")
 		html = strings.Replace(html, "</body>", "\t" + injection + "\n</body>", 1)

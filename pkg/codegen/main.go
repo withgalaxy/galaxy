@@ -59,16 +59,38 @@ import (
 
 func main() {
 	log.Println("Starting server...")
+	
+	// Detect executable path for asset resolution
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatal("Failed to get executable path:", err)
+	}
+	baseDir := filepath.Dir(exePath)
+	
 	%s
 	
-	http.Handle("/_assets/", http.StripPrefix("/_assets/", http.FileServer(http.Dir("_assets"))))
+	// Serve static assets from executable directory
+	assetsDir := filepath.Join(baseDir, "_assets")
+	http.Handle("/_assets/", http.StripPrefix("/_assets/", http.FileServer(http.Dir(assetsDir))))
+	
+	wasmExecPath := filepath.Join(baseDir, "wasm_exec.js")
 	http.Handle("/wasm_exec.js", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "wasm_exec.js")
+		http.ServeFile(w, r, wasmExecPath)
 	}))
+	
+	// Health check
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+	
+	// HMR endpoint for dev mode
+	if os.Getenv("DEV_MODE") == "true" {
+		http.HandleFunc("/__hmr/client.js", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/javascript")
+			w.Write([]byte("console.log('HMR client placeholder - use main dev server')"))
+		})
+	}
 	
 	%s
 	%s
@@ -93,10 +115,10 @@ func main() {
 }
 
 func (g *MainGenerator) generateHelpers() string {
-	helpers := `func tryServeStatic(w http.ResponseWriter, r *http.Request) bool {
+	helpers := `func tryServeStatic(w http.ResponseWriter, r *http.Request, baseDir string) bool {
 	// Check if this looks like a static file (has extension)
 	if filepath.Ext(r.URL.Path) != "" {
-		publicPath := filepath.Join("public", r.URL.Path)
+		publicPath := filepath.Join(baseDir, "public", r.URL.Path)
 		if _, err := os.Stat(publicPath); err == nil {
 			http.ServeFile(w, r, publicPath)
 			return true
@@ -244,7 +266,7 @@ func (g *MainGenerator) generateRouteRegistrations() string {
 		}
 		checks = append(checks, dynamicRoutes...)
 
-		all = append(all, fmt.Sprintf("\thttp.HandleFunc(\"/\", func(w http.ResponseWriter, r *http.Request) {\n\t\t// Try serving static file first\n\t\tif tryServeStatic(w, r) {\n\t\t\treturn\n\t\t}\n%s\n\t\thttp.NotFound(w, r)\n\t})",
+		all = append(all, fmt.Sprintf("\thttp.HandleFunc(\"/\", func(w http.ResponseWriter, r *http.Request) {\n\t\t// Try serving static file first\n\t\tif tryServeStatic(w, r, baseDir) {\n\t\t\treturn\n\t\t}\n%s\n\t\thttp.NotFound(w, r)\n\t})",
 			strings.Join(checks, "\n")))
 	}
 

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/withgalaxy/galaxy/pkg/assets"
 	"github.com/withgalaxy/galaxy/pkg/codegen"
@@ -35,6 +37,8 @@ type GalaxyPlugin struct {
 	Lifecycle          *lifecycle.Lifecycle
 	UseCodegen         bool
 	CodegenPort        int
+	codegenCmd         *exec.Cmd
+	codegenReady       bool
 
 	RootDir   string
 	PagesDir  string
@@ -132,7 +136,48 @@ func (p *GalaxyPlugin) buildCodegenServer() error {
 	}
 
 	fmt.Println("✅ Codegen server built")
+
+	// Start codegen server
+	if err := p.startCodegenServer(); err != nil {
+		return fmt.Errorf("start codegen server: %w", err)
+	}
+
 	return nil
+}
+
+func (p *GalaxyPlugin) startCodegenServer() error {
+	p.CodegenPort = 6173 // Fixed port for now
+
+	cmd := exec.Command("./galaxy-codegen-server")
+	cmd.Dir = filepath.Join(p.RootDir, ".galaxy", "server")
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("PORT=%d", p.CodegenPort),
+		"DEV_MODE=true",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	p.codegenCmd = cmd
+
+	// Wait for ready
+	for i := 0; i < 50; i++ {
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", p.CodegenPort))
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode < 500 {
+				p.codegenReady = true
+				fmt.Printf("✅ Codegen server ready on port %d\n", p.CodegenPort)
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("codegen server did not become ready")
 }
 
 func (p *GalaxyPlugin) ConfigureServer(server any) error {
@@ -178,6 +223,12 @@ func (p *GalaxyPlugin) Middleware() orbit.Middleware {
 				return
 			}
 
+			// Proxy to codegen server if ready
+			if p.UseCodegen && p.codegenReady {
+				p.proxyToCodegen(w, r)
+				return
+			}
+
 			if p.MiddlewareChain != nil {
 				mwCtx := middleware.NewContext(w, r)
 				mwCtx.Params = params
@@ -194,5 +245,36 @@ func (p *GalaxyPlugin) Middleware() orbit.Middleware {
 
 			p.handleRoute(w, r, route, params)
 		})
+	}
+}
+
+func (p *GalaxyPlugin) proxyToCodegen(w http.ResponseWriter, r *http.Request) {
+	target := fmt.Sprintf("http://localhost:%d%s", p.CodegenPort, r.URL.Path)
+
+	proxyReq, _ := http.NewRequest(r.Method, target, r.Body)
+	proxyReq.Header = r.Header
+
+	client := &http.Client{}
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	for k, v := range resp.Header {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
 	}
 }
