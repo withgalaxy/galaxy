@@ -58,8 +58,6 @@ import (
 )
 
 func main() {
-	log.Println("Starting server...")
-	
 	// Detect executable path for asset resolution
 	exePath, err := os.Executable()
 	if err != nil {
@@ -100,7 +98,6 @@ func main() {
 		port = "4322"
 	}
 	addr := ":" + port
-	log.Printf("🚀 Server running at http://localhost%%s\n", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
 	}

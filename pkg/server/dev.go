@@ -532,8 +532,6 @@ func (s *DevServer) serveWasmExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *DevServer) buildAndStartCodegenServer() error {
-	fmt.Println("🔨 Building codegen server...")
-
 	// Use a different port for the codegen server
 	s.codegenServerPort = s.Port + 1000
 
@@ -543,9 +541,6 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 	if err := builder.Build(); err != nil {
 		return fmt.Errorf("codegen build failed: %w", err)
 	}
-
-	fmt.Println("✅ Codegen server built successfully")
-	fmt.Println("🚀 Starting codegen server...")
 
 	// Start the compiled server from .galaxy/server directory
 	// so it can find _assets, wasm_exec.js, etc.
@@ -575,8 +570,9 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 	envVars = append(envVars, "DEV_MODE=true")
 
 	cmd.Env = envVars
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Suppress codegen server output
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start codegen server: %w", err)
@@ -592,7 +588,6 @@ func (s *DevServer) buildAndStartCodegenServer() error {
 			resp.Body.Close()
 			if resp.StatusCode < 500 {
 				s.codegenReady = true
-				fmt.Printf("✅ Codegen server ready on port %d\n", s.codegenServerPort)
 				return nil
 			}
 		}
@@ -606,7 +601,6 @@ func (s *DevServer) broadcastWasmReloadFromManifest(filesToRebuild []string) {
 	manifestPath := filepath.Join(s.RootDir, ".galaxy", "server", "_assets", "wasm-manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		fmt.Printf("⚠ Could not read WASM manifest: %v\n", err)
 		return
 	}
 
@@ -621,7 +615,6 @@ func (s *DevServer) broadcastWasmReloadFromManifest(filesToRebuild []string) {
 	}
 
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		fmt.Printf("⚠ Could not parse WASM manifest: %v\n", err)
 		return
 	}
 
@@ -635,7 +628,6 @@ func (s *DevServer) broadcastWasmReloadFromManifest(filesToRebuild []string) {
 			wasmMod := pageAssets.WasmModules[0]
 			moduleId := filepath.Base(filePath)
 
-			fmt.Printf("📦 Broadcasting WASM reload: %s -> %s\n", moduleId, wasmMod.WasmPath)
 			s.HMRServer.BroadcastWasmReload(wasmMod.WasmPath, wasmMod.Hash, moduleId)
 		}
 	}
@@ -759,7 +751,6 @@ func (s *DevServer) executeCodegenRebuild() {
 		return
 	}
 
-	fmt.Printf("\n🔨 Rebuilding codegen for %d file(s)...\n", len(filesToRebuild))
 	start := time.Now()
 
 	// Temporarily mark codegen as not ready (fall back to HMR)
@@ -771,7 +762,6 @@ func (s *DevServer) executeCodegenRebuild() {
 	var rebuildErr error
 	for _, filePath := range filesToRebuild {
 		if err := builder.RebuildPage(filePath); err != nil {
-			fmt.Printf("❌ Rebuild failed for %s: %v\n", filepath.Base(filePath), err)
 			rebuildErr = err
 			break
 		}
@@ -811,11 +801,11 @@ func (s *DevServer) executeCodegenRebuild() {
 	envVars = append(envVars, fmt.Sprintf("PORT=%d", s.codegenServerPort))
 	envVars = append(envVars, "DEV_MODE=true")
 	cmd.Env = envVars
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Suppress codegen server output
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
-		fmt.Printf("❌ Failed to start codegen server: %v\n", err)
 		return
 	}
 
@@ -830,7 +820,7 @@ func (s *DevServer) executeCodegenRebuild() {
 			if resp.StatusCode < 500 {
 				s.codegenReady = true
 				duration := time.Since(start)
-				fmt.Printf("✅ Codegen rebuilt in %dms\n", duration.Milliseconds())
+				_ = duration // Suppress unused variable warning
 
 				if s.HMRServer != nil {
 					// Broadcast HMR updates based on what changed
@@ -844,8 +834,6 @@ func (s *DevServer) executeCodegenRebuild() {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-
-	fmt.Printf("⚠ Codegen server did not become ready\n")
 }
 
 func (s *DevServer) proxyToCodegenServer(w http.ResponseWriter, r *http.Request) {

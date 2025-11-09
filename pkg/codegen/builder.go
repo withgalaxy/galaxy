@@ -507,7 +507,6 @@ func (b *CodegenBuilder) compile(serverDir string) error {
 }
 
 func (b *CodegenBuilder) RebuildPage(changedFilePath string) error {
-	fmt.Printf("  📝 Rebuilding page: %s\n", filepath.Base(changedFilePath))
 	serverDir := filepath.Join(b.OutDir, "server")
 
 	// Find the route for this file
@@ -522,7 +521,6 @@ func (b *CodegenBuilder) RebuildPage(changedFilePath string) error {
 	if changedRoute == nil {
 		return fmt.Errorf("no route found for file: %s", changedFilePath)
 	}
-	fmt.Printf("  🎯 Route pattern: %s\n", changedRoute.Pattern)
 
 	// Read and parse the changed file
 	content, err := os.ReadFile(changedFilePath)
@@ -566,18 +564,12 @@ func (b *CodegenBuilder) RebuildPage(changedFilePath string) error {
 	}
 
 	// Replace the handler function in main.go
-	fmt.Printf("  🔄 Replacing handler function: %s\n", handler.FunctionName)
 	updatedMain := replaceHandlerFunction(string(mainContent), handler)
-
-	if updatedMain == string(mainContent) {
-		fmt.Printf("  ⚠️  Warning: main.go was not modified (pattern may not have matched)\n")
-	}
 
 	// Write updated main.go
 	if err := os.WriteFile(mainPath, []byte(updatedMain), 0644); err != nil {
 		return fmt.Errorf("write main.go: %w", err)
 	}
-	fmt.Printf("  💾 Updated main.go\n")
 
 	// Rebuild WASM assets if needed
 	wasmAssets, err := b.Bundler.BundleWasmScripts(comp, changedRoute.FilePath)
@@ -597,11 +589,9 @@ func (b *CodegenBuilder) RebuildPage(changedFilePath string) error {
 	}
 
 	// Recompile the server (Go's incremental compilation makes this fast)
-	fmt.Printf("  🔨 Recompiling Go binary...\n")
 	if err := b.compile(serverDir); err != nil {
 		return fmt.Errorf("compile: %w", err)
 	}
-	fmt.Printf("  ✅ Page rebuilt successfully\n")
 
 	return nil
 }

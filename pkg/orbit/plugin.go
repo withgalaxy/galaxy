@@ -111,6 +111,12 @@ func (p *GalaxyPlugin) ConfigResolved(config any) error {
 	}
 	p.Router.Sort()
 
+	// Print discovered routes
+	for _, route := range p.Router.Routes {
+		fmt.Printf("  %s\n", route.Pattern)
+	}
+	fmt.Println()
+
 	if p.UseCodegen {
 		if err := p.buildCodegenServer(); err != nil {
 			return fmt.Errorf("codegen: %w", err)
@@ -127,15 +133,11 @@ func (p *GalaxyPlugin) ConfigResolved(config any) error {
 }
 
 func (p *GalaxyPlugin) buildCodegenServer() error {
-	fmt.Println("🔨 Building codegen server...")
-
 	builder := codegen.NewCodegenBuilder(p.Router.Routes, p.PagesDir, ".galaxy", "dev-server", p.PublicDir)
 	builder.Bundler = p.Bundler
 	if err := builder.Build(); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}
-
-	fmt.Println("✅ Codegen server built")
 
 	// Start codegen server
 	if err := p.startCodegenServer(); err != nil {
@@ -154,8 +156,9 @@ func (p *GalaxyPlugin) startCodegenServer() error {
 		fmt.Sprintf("PORT=%d", p.CodegenPort),
 		"DEV_MODE=true",
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Suppress codegen server output
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
 		return err
@@ -170,7 +173,6 @@ func (p *GalaxyPlugin) startCodegenServer() error {
 			resp.Body.Close()
 			if resp.StatusCode < 500 {
 				p.codegenReady = true
-				fmt.Printf("✅ Codegen server ready on port %d\n", p.CodegenPort)
 				return nil
 			}
 		}
@@ -217,20 +219,27 @@ func (p *GalaxyPlugin) HandleHotUpdate(file string) ([]string, error) {
 func (p *GalaxyPlugin) Middleware() orbit.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+
+			// Wrap response writer to capture status code
+			rw := &responseWriter{ResponseWriter: w, statusCode: 200}
+
 			route, params := p.Router.Match(r.URL.Path)
 			if route == nil {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(rw, r)
+				p.logRequest(r, rw.statusCode, time.Since(start))
 				return
 			}
 
 			// Proxy to codegen server if ready
 			if p.UseCodegen && p.codegenReady {
-				p.proxyToCodegen(w, r)
+				p.proxyToCodegen(rw, r)
+				p.logRequest(r, rw.statusCode, time.Since(start))
 				return
 			}
 
 			if p.MiddlewareChain != nil {
-				mwCtx := middleware.NewContext(w, r)
+				mwCtx := middleware.NewContext(rw, r)
 				mwCtx.Params = params
 
 				err := p.MiddlewareChain.Execute(mwCtx, func(ctx *middleware.Context) error {
@@ -238,13 +247,52 @@ func (p *GalaxyPlugin) Middleware() orbit.Middleware {
 					return nil
 				})
 				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
+					http.Error(rw, err.Error(), http.StatusInternalServerError)
 				}
+				p.logRequest(r, rw.statusCode, time.Since(start))
 				return
 			}
 
-			p.handleRoute(w, r, route, params)
+			p.handleRoute(rw, r, route, params)
+			p.logRequest(r, rw.statusCode, time.Since(start))
 		})
+	}
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (p *GalaxyPlugin) logRequest(r *http.Request, statusCode int, duration time.Duration) {
+	methodColor := "\033[36m"
+	statusColor := getStatusColor(statusCode)
+	reset := "\033[0m"
+
+	fmt.Printf("%s%s%s %s - %s%d%s (%dms)\n",
+		methodColor, r.Method, reset,
+		r.URL.Path,
+		statusColor, statusCode, reset,
+		duration.Milliseconds())
+}
+
+func getStatusColor(status int) string {
+	switch {
+	case status >= 500:
+		return "\033[31m"
+	case status >= 400:
+		return "\033[33m"
+	case status >= 300:
+		return "\033[36m"
+	case status >= 200:
+		return "\033[32m"
+	default:
+		return "\033[0m"
 	}
 }
 
