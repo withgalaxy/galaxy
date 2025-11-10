@@ -611,6 +611,32 @@ require'lspconfig'.gxc.setup{}
 
 Install the GXC extension from `editors/vscode/`.
 
+## Documentation
+
+Comprehensive guides available in `docs/`:
+
+### Core Documentation
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design, modules, data flows
+- **[CONFIGURATION.md](docs/CONFIGURATION.md)** - Complete config reference
+- **[COMPONENT_SYSTEM.md](docs/COMPONENT_SYSTEM.md)** - .gxc component syntax
+- **[BUILD_SYSTEM.md](docs/BUILD_SYSTEM.md)** - SSG, SSR, Hybrid modes
+- **[ROUTING.md](docs/ROUTING.md)** - File-based routing system
+
+### Features
+- **[WASM_GUIDE.md](docs/WASM_GUIDE.md)** - Go → WebAssembly, wasmdom API
+- **[MIDDLEWARE.md](docs/MIDDLEWARE.md)** - Go middleware system
+- **[PLUGIN_API.md](docs/PLUGIN_API.md)** - Plugin development
+- **[CLI_REFERENCE.md](docs/CLI_REFERENCE.md)** - CLI commands
+
+### Resources
+- **[EXAMPLES.md](docs/EXAMPLES.md)** - Code examples
+- **[FAQ.md](docs/FAQ.md)** - Frequently asked questions
+- **[TESTING.md](docs/TESTING.md)** - Testing strategies
+- **[HMR_GUIDE.md](docs/HMR_GUIDE.md)** - Hot module replacement
+- **[ADAPTERS.md](docs/ADAPTERS.md)** - Deployment adapters
+- **[MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md)** - Migration help
+- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - Contribution guidelines
+
 ## License
 
 MIT License - see [LICENSE](LICENSE)
