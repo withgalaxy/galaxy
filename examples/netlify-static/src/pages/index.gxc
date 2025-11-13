@@ -1,0 +1,54 @@
+---
+title := "Welcome to Galaxy on Netlify"
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+</head>
+<body>
+    <main>
+        <h1>{title}</h1>
+        <p>This is a static site built with Galaxy and deployed to Netlify.</p>
+        <nav>
+            <a href="/about">About</a>
+        </nav>
+    </main>
+</body>
+</html>
+
+<style scoped>
+    body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+    }
+    
+    h1 {
+        color: #00ad9f;
+        margin-bottom: 1rem;
+    }
+    
+    nav {
+        margin-top: 2rem;
+    }
+    
+    a {
+        color: #00ad9f;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border: 2px solid #00ad9f;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    
+    a:hover {
+        background: #00ad9f;
+        color: white;
+    }
+</style>

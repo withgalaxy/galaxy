@@ -1,0 +1,8 @@
+site = "https://my-galaxy-app.netlify.app"
+base = "/"
+
+[output]
+type = "static"
+
+[adapter]
+name = "netlify"

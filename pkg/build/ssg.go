@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/withgalaxy/galaxy/pkg/adapters"
+	"github.com/withgalaxy/galaxy/pkg/adapters/netlify"
 	"github.com/withgalaxy/galaxy/pkg/adapters/vercel"
 	"github.com/withgalaxy/galaxy/pkg/assets"
 	"github.com/withgalaxy/galaxy/pkg/compiler"
@@ -124,6 +125,12 @@ func (b *SSGBuilder) Build() error {
 	if b.Config.Adapter.Name == config.AdapterVercel {
 		if err := b.runVercelAdapter(); err != nil {
 			return fmt.Errorf("vercel adapter: %w", err)
+		}
+	}
+
+	if b.Config.Adapter.Name == config.AdapterNetlify {
+		if err := b.runNetlifyAdapter(); err != nil {
+			return fmt.Errorf("netlify adapter: %w", err)
 		}
 	}
 
@@ -472,6 +479,30 @@ func (b *SSGBuilder) copyWasmExec() error {
 
 func (b *SSGBuilder) runVercelAdapter() error {
 	adapter := vercel.New()
+
+	routeInfos := make([]adapters.RouteInfo, len(b.Router.Routes))
+	for i, route := range b.Router.Routes {
+		routeInfos[i] = adapters.RouteInfo{
+			Pattern:    route.Pattern,
+			FilePath:   route.FilePath,
+			IsEndpoint: route.IsEndpoint,
+		}
+	}
+
+	adapterCfg := &adapters.BuildConfig{
+		Config:    b.Config,
+		ServerDir: "",
+		OutDir:    b.OutDir,
+		PagesDir:  b.PagesDir,
+		PublicDir: b.PublicDir,
+		Routes:    routeInfos,
+	}
+
+	return adapter.Build(adapterCfg)
+}
+
+func (b *SSGBuilder) runNetlifyAdapter() error {
+	adapter := netlify.New()
 
 	routeInfos := make([]adapters.RouteInfo, len(b.Router.Routes))
 	for i, route := range b.Router.Routes {
