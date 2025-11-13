@@ -26,6 +26,7 @@ type Config struct {
 	Output         OutputConfig    `toml:"output"`
 	Server         ServerConfig    `toml:"server"`
 	Adapter        AdapterConfig   `toml:"adapter"`
+	Security       SecurityConfig  `toml:"security"`
 	Lifecycle      LifecycleConfig `toml:"lifecycle"`
 	Plugins        []PluginConfig  `toml:"plugins"`
 	Markdown       MarkdownConfig  `toml:"markdown"`
@@ -68,6 +69,36 @@ type ContentConfig struct {
 	ContentDir  string `toml:"contentDir"`
 }
 
+type SecurityConfig struct {
+	CheckOrigin    bool            `toml:"checkOrigin"`
+	AllowOrigins   []string        `toml:"allowOrigins"`
+	AllowedDomains []RemotePattern `toml:"allowedDomains"`
+	Headers        HeadersConfig   `toml:"headers"`
+	BodyLimit      BodyLimitConfig `toml:"bodyLimit"`
+}
+
+type HeadersConfig struct {
+	Enabled                 bool   `toml:"enabled"`
+	XFrameOptions           string `toml:"xFrameOptions"`
+	XContentTypeOptions     string `toml:"xContentTypeOptions"`
+	XXSSProtection          string `toml:"xXSSProtection"`
+	ReferrerPolicy          string `toml:"referrerPolicy"`
+	StrictTransportSecurity string `toml:"strictTransportSecurity"`
+	ContentSecurityPolicy   string `toml:"contentSecurityPolicy"`
+	PermissionsPolicy       string `toml:"permissionsPolicy"`
+}
+
+type BodyLimitConfig struct {
+	Enabled  bool  `toml:"enabled"`
+	MaxBytes int64 `toml:"maxBytes"`
+}
+
+type RemotePattern struct {
+	Protocol string `toml:"protocol"`
+	Hostname string `toml:"hostname"`
+	Port     *int   `toml:"port"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Site:           "",
@@ -99,6 +130,25 @@ func DefaultConfig() *Config {
 		Content: ContentConfig{
 			Collections: true,
 			ContentDir:  "./src/content",
+		},
+		Security: SecurityConfig{
+			CheckOrigin:    true,
+			AllowOrigins:   []string{},
+			AllowedDomains: []RemotePattern{},
+			Headers: HeadersConfig{
+				Enabled:                 false,
+				XFrameOptions:           "DENY",
+				XContentTypeOptions:     "nosniff",
+				XXSSProtection:          "1; mode=block",
+				ReferrerPolicy:          "strict-origin-when-cross-origin",
+				StrictTransportSecurity: "max-age=31536000; includeSubDomains",
+				ContentSecurityPolicy:   "",
+				PermissionsPolicy:       "",
+			},
+			BodyLimit: BodyLimitConfig{
+				Enabled:  true,
+				MaxBytes: 10 << 20,
+			},
 		},
 	}
 }

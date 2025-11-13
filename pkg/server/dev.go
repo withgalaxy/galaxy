@@ -29,34 +29,39 @@ import (
 	"github.com/withgalaxy/galaxy/pkg/plugins"
 	"github.com/withgalaxy/galaxy/pkg/plugins/tailwind"
 	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/security"
 	"github.com/withgalaxy/galaxy/pkg/ssr"
 	"github.com/withgalaxy/galaxy/pkg/template"
 )
 
 type DevServer struct {
-	Router             *router.Router
-	RootDir            string
-	PagesDir           string
-	PublicDir          string
-	Port               int
-	Bundler            *assets.Bundler
-	Compiler           *compiler.ComponentCompiler
-	EndpointCompiler   *endpoints.EndpointCompiler
-	Verbose            bool
-	Lifecycle          *lifecycle.Lifecycle
-	MiddlewareCompiler *middleware.MiddlewareCompiler
-	LoadedMiddleware   *middleware.LoadedMiddleware
-	MiddlewareChain    *middleware.Chain
-	HasMiddleware      bool
-	UseCodegen         bool
-	PageCache          *PageCache
-	PluginCompiler     *PluginCompiler
-	PluginManager      *plugins.Manager
-	compileMu          sync.Mutex
-	codegenServerCmd   *exec.Cmd
-	HMRServer          *hmr.Server
-	ChangeTracker      *hmr.ChangeTracker
-	ComponentTracker   *hmr.ComponentTracker
+	Router                 *router.Router
+	RootDir                string
+	PagesDir               string
+	PublicDir              string
+	Port                   int
+	Bundler                *assets.Bundler
+	Compiler               *compiler.ComponentCompiler
+	EndpointCompiler       *endpoints.EndpointCompiler
+	Verbose                bool
+	Lifecycle              *lifecycle.Lifecycle
+	MiddlewareCompiler     *middleware.MiddlewareCompiler
+	LoadedMiddleware       *middleware.LoadedMiddleware
+	MiddlewareChain        *middleware.Chain
+	HasMiddleware          bool
+	UseCodegen             bool
+	PageCache              *PageCache
+	PluginCompiler         *PluginCompiler
+	PluginManager          *plugins.Manager
+	CSRFMiddleware         *security.CSRFMiddleware
+	BodyLimitMiddleware    *security.BodyLimitMiddleware
+	ForwardedHostValidator *security.ForwardedHostValidator
+	HeadersMiddleware      *security.HeadersMiddleware
+	compileMu              sync.Mutex
+	codegenServerCmd       *exec.Cmd
+	HMRServer              *hmr.Server
+	ChangeTracker          *hmr.ChangeTracker
+	ComponentTracker       *hmr.ComponentTracker
 
 	codegenServerPort  int
 	codegenReady       bool
@@ -114,6 +119,30 @@ func NewDevServer(cfg *config.Config, rootDir, pagesDir, publicDir string, port 
 	srv.ComponentTracker = hmr.NewComponentTracker()
 
 	srv.Bundler.DevMode = true
+
+	if cfg.Security.BodyLimit.Enabled {
+		maxBytes := cfg.Security.BodyLimit.MaxBytes
+		if maxBytes == 0 {
+			maxBytes = 10 * 1024 * 1024
+		}
+		srv.BodyLimitMiddleware = security.NewBodyLimitMiddleware(maxBytes)
+	}
+
+	if len(cfg.Security.AllowedDomains) > 0 {
+		srv.ForwardedHostValidator = security.NewForwardedHostValidator(cfg.Security.AllowedDomains)
+	}
+
+	if cfg.Security.CheckOrigin && cfg.IsSSR() {
+		srv.CSRFMiddleware = security.NewCSRFMiddleware(&security.CSRFConfig{
+			CheckOrigin:  cfg.Security.CheckOrigin,
+			AllowOrigins: cfg.Security.AllowOrigins,
+			SiteURL:      cfg.Site,
+		})
+	}
+
+	if cfg.Security.Headers.Enabled {
+		srv.HeadersMiddleware = security.NewHeadersMiddleware(cfg.Security.Headers)
+	}
 
 	return srv
 }
@@ -283,6 +312,36 @@ func (s *DevServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	mwCtx := middleware.NewContext(w, r)
 	mwCtx.Params = params
+
+	if s.BodyLimitMiddleware != nil {
+		if err := s.BodyLimitMiddleware.Middleware(mwCtx, func() error { return nil }); err != nil {
+			return
+		}
+	}
+
+	if s.ForwardedHostValidator != nil {
+		currentURL := mwCtx.Request.URL
+		if currentURL.Scheme == "" {
+			currentURL.Scheme = "http"
+		}
+		if currentURL.Host == "" {
+			currentURL.Host = mwCtx.Request.Host
+		}
+		validatedURL := s.ForwardedHostValidator.ValidateForwardedHost(mwCtx.Request, currentURL)
+		mwCtx.Request.URL = validatedURL
+	}
+
+	if s.CSRFMiddleware != nil {
+		if err := s.CSRFMiddleware.Middleware(mwCtx, func() error { return nil }); err != nil {
+			return
+		}
+	}
+
+	if s.HeadersMiddleware != nil {
+		if err := s.HeadersMiddleware.Middleware(mwCtx, func() error { return nil }); err != nil {
+			return
+		}
+	}
 
 	if s.HasMiddleware && s.MiddlewareChain != nil {
 		err := s.MiddlewareChain.Execute(mwCtx, func(ctx *middleware.Context) error {

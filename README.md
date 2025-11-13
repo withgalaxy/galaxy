@@ -10,6 +10,7 @@ A blazing-fast, Go-powered web framework inspired by Astro. Build content-focuse
 - **🎨 Component-Based** - Reusable `.gxc` components
 - **⚡ Three Build Modes** - Static, Server (SSR), or Hybrid
 - **🔌 Go-Powered Runtime** - Middleware & API endpoints in Go
+- **🔒 Secure by Default** - Built-in CSRF protection
 - **🛠️ Rich CLI** - Powerful command-line interface
 - **📱 Interactive Setup** - Guided project creation
 
@@ -592,6 +593,16 @@ make clean      # Clean build artifacts
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more details
 
+## Security
+
+Galaxy is secure by default:
+
+- **CSRF Protection** - Automatic Origin header validation (enabled by default)
+- **SSR/Hybrid Only** - Protection for server-rendered applications
+- **Localhost Allowed** - Development requests automatically trusted
+
+See [docs/SECURITY.md](docs/SECURITY.md) for complete security documentation.
+
 ## Editor Support
 
 ### NeoVim
@@ -625,6 +636,7 @@ Comprehensive guides available in `docs/`:
 ### Features
 - **[WASM_GUIDE.md](docs/WASM_GUIDE.md)** - Go → WebAssembly, wasmdom API
 - **[MIDDLEWARE.md](docs/MIDDLEWARE.md)** - Go middleware system
+- **[SECURITY.md](docs/SECURITY.md)** - Security features & CSRF protection
 - **[PLUGIN_API.md](docs/PLUGIN_API.md)** - Plugin development
 - **[CLI_REFERENCE.md](docs/CLI_REFERENCE.md)** - CLI commands
 

@@ -6,3 +6,16 @@ packageManager = "{{.PackageManager}}"
 [server]
 port = 4322
 host = "localhost"
+
+# Security (SSR/Hybrid only)
+[security]
+checkOrigin = true
+# allowOrigins = ["https://api.example.com"]
+
+# Optional: Security headers (disabled by default)
+# [security.headers]
+# enabled = true
+
+# Request body limit (10MB default, enabled)
+# [security.bodyLimit]
+# maxBytes = 10485760

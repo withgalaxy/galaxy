@@ -68,18 +68,44 @@ func (a *StandaloneAdapter) generateMain(cfg *adapters.BuildConfig) error {
 		})
 	}
 
+	hasSecurity := cfg.Config.Security.CheckOrigin && cfg.Config.IsSSR()
+
+	securityAllowOrigins := []string{}
+	if hasSecurity {
+		securityAllowOrigins = cfg.Config.Security.AllowOrigins
+	}
+
+	hasBodyLimit := cfg.Config.Security.BodyLimit.Enabled
+	bodyLimitMaxBytes := cfg.Config.Security.BodyLimit.MaxBytes
+	if hasBodyLimit && bodyLimitMaxBytes == 0 {
+		bodyLimitMaxBytes = 10 * 1024 * 1024
+	}
+
+	hasForwardedHost := len(cfg.Config.Security.AllowedDomains) > 0
+	hasHeaders := cfg.Config.Security.Headers.Enabled
+
 	data := map[string]interface{}{
-		"Port":            cfg.Config.Server.Port,
-		"Host":            cfg.Config.Server.Host,
-		"PublicDir":       filepath.Join(cfg.OutDir, "public"),
-		"StaticDir":       cfg.OutDir,
-		"PagesDir":        cfg.PagesDir,
-		"Routes":          routes,
-		"Endpoints":       endpoints,
-		"EndpointImports": imports,
-		"HasMiddleware":   hasMiddleware,
-		"HasSequence":     hasSequence,
-		"HasLifecycle":    hasLifecycle,
+		"Port":                 cfg.Config.Server.Port,
+		"Host":                 cfg.Config.Server.Host,
+		"SiteURL":              cfg.Config.Site,
+		"PublicDir":            filepath.Join(cfg.OutDir, "public"),
+		"StaticDir":            cfg.OutDir,
+		"PagesDir":             cfg.PagesDir,
+		"Routes":               routes,
+		"Endpoints":            endpoints,
+		"EndpointImports":      imports,
+		"HasMiddleware":        hasMiddleware,
+		"HasSequence":          hasSequence,
+		"HasLifecycle":         hasLifecycle,
+		"HasSecurity":          hasSecurity,
+		"SecurityCheckOrigin":  cfg.Config.Security.CheckOrigin,
+		"SecurityAllowOrigins": securityAllowOrigins,
+		"HasBodyLimit":         hasBodyLimit,
+		"BodyLimitMaxBytes":    bodyLimitMaxBytes,
+		"HasForwardedHost":     hasForwardedHost,
+		"AllowedDomains":       cfg.Config.Security.AllowedDomains,
+		"HasHeaders":           hasHeaders,
+		"HeadersConfig":        cfg.Config.Security.Headers,
 	}
 
 	return tmpl.Execute(f, data)
@@ -355,6 +381,9 @@ import (
 	{{end}}
 
 	"github.com/withgalaxy/galaxy/pkg/compiler"
+	{{if or .HasBodyLimit .HasForwardedHost .HasHeaders}}
+	"github.com/withgalaxy/galaxy/pkg/config"
+	{{end}}
 	"github.com/withgalaxy/galaxy/pkg/endpoints"
 	"github.com/withgalaxy/galaxy/pkg/executor"
 	{{if .HasLifecycle}}
@@ -363,6 +392,9 @@ import (
 	"github.com/withgalaxy/galaxy/pkg/middleware"
 	"github.com/withgalaxy/galaxy/pkg/parser"
 	"github.com/withgalaxy/galaxy/pkg/router"
+	{{if or .HasSecurity .HasBodyLimit .HasForwardedHost .HasHeaders}}
+	"github.com/withgalaxy/galaxy/pkg/security"
+	{{end}}
 	"github.com/withgalaxy/galaxy/pkg/ssr"
 	"github.com/withgalaxy/galaxy/pkg/template"
 	"github.com/withgalaxy/galaxy/pkg/wasm"
@@ -379,11 +411,23 @@ import (
 )
 
 var (
-	rt           *router.Router
-	comp         *compiler.ComponentCompiler
-	baseDir      string
-	pagesDir     = "pages"
-	wasmManifest *wasm.WasmManifest
+	rt                     *router.Router
+	comp                   *compiler.ComponentCompiler
+	baseDir                string
+	pagesDir               = "pages"
+	wasmManifest           *wasm.WasmManifest
+	{{if .HasBodyLimit}}
+	bodyLimitMiddleware    *security.BodyLimitMiddleware
+	{{end}}
+	{{if .HasForwardedHost}}
+	forwardedHostValidator *security.ForwardedHostValidator
+	{{end}}
+	{{if .HasSecurity}}
+	csrfMiddleware         *security.CSRFMiddleware
+	{{end}}
+	{{if .HasHeaders}}
+	headersMiddleware      *security.HeadersMiddleware
+	{{end}}
 	endpointHandlers = map[string]map[string]endpoints.HandlerFunc{
 		{{range .Endpoints}}
 		"{{.Pattern}}": {
@@ -411,6 +455,44 @@ func main() {
 
 	manifestPath := filepath.Join(baseDir, "_assets", "wasm-manifest.json")
 	wasmManifest, _ = wasm.LoadManifest(manifestPath)
+
+	{{if .HasBodyLimit}}
+	bodyLimitMiddleware = security.NewBodyLimitMiddleware({{.BodyLimitMaxBytes}})
+	{{end}}
+
+	{{if .HasForwardedHost}}
+	allowedDomains := []config.RemotePattern{
+		{{range .AllowedDomains}}
+		{
+			Protocol: "{{.Protocol}}",
+			Hostname: "{{.Hostname}}",
+			{{if .Port}}Port: func() *int { p := {{.Port}}; return &p }(),{{end}}
+		},
+		{{end}}
+	}
+	forwardedHostValidator = security.NewForwardedHostValidator(allowedDomains)
+	{{end}}
+
+	{{if .HasSecurity}}
+	csrfMiddleware = security.NewCSRFMiddleware(&security.CSRFConfig{
+		CheckOrigin:  {{.SecurityCheckOrigin}},
+		AllowOrigins: []string{ {{range .SecurityAllowOrigins}}"{{.}}",{{end}} },
+		SiteURL:      "{{.SiteURL}}",
+	})
+	{{end}}
+
+	{{if .HasHeaders}}
+	headersMiddleware = security.NewHeadersMiddleware(config.HeadersConfig{
+		Enabled: {{.HeadersConfig.Enabled}},
+		XFrameOptions: "{{.HeadersConfig.XFrameOptions}}",
+		XContentTypeOptions: "{{.HeadersConfig.XContentTypeOptions}}",
+		XXSSProtection: "{{.HeadersConfig.XXSSProtection}}",
+		ReferrerPolicy: "{{.HeadersConfig.ReferrerPolicy}}",
+		StrictTransportSecurity: "{{.HeadersConfig.StrictTransportSecurity}}",
+		ContentSecurityPolicy: "{{.HeadersConfig.ContentSecurityPolicy}}",
+		PermissionsPolicy: "{{.HeadersConfig.PermissionsPolicy}}",
+	})
+	{{end}}
 
 	{{if .HasLifecycle}}
 	lc := lifecycle.NewLifecycle()
@@ -480,6 +562,36 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	mwCtx := middleware.NewContext(w, r)
 	mwCtx.Params = params
+
+	{{if .HasBodyLimit}}
+	if err := bodyLimitMiddleware.Middleware(mwCtx, func() error { return nil }); err != nil {
+		return
+	}
+	{{end}}
+
+	{{if .HasForwardedHost}}
+	currentURL := mwCtx.Request.URL
+	if currentURL.Scheme == "" {
+		currentURL.Scheme = "http"
+	}
+	if currentURL.Host == "" {
+		currentURL.Host = mwCtx.Request.Host
+	}
+	validatedURL := forwardedHostValidator.ValidateForwardedHost(mwCtx.Request, currentURL)
+	mwCtx.Request.URL = validatedURL
+	{{end}}
+
+	{{if .HasSecurity}}
+	if err := csrfMiddleware.Middleware(mwCtx, func() error { return nil }); err != nil {
+		return
+	}
+	{{end}}
+
+	{{if .HasHeaders}}
+	if err := headersMiddleware.Middleware(mwCtx, func() error { return nil }); err != nil {
+		return
+	}
+	{{end}}
 
 	{{if .HasMiddleware}}
 	{{if .HasSequence}}
