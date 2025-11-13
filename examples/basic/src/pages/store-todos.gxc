@@ -1,0 +1,369 @@
+---
+var title = "Todo App with Stores"
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+</head>
+<body>
+    <div class="container">
+        <h1>{title}</h1>
+        
+        <div class="add-todo">
+            <input type="text" id="todo-input" placeholder="What needs to be done?">
+            <button id="add-btn">Add</button>
+        </div>
+
+        <div class="filters">
+            <button id="filter-all" class="active">All</button>
+            <button id="filter-active">Active</button>
+            <button id="filter-completed">Completed</button>
+        </div>
+
+        <ul id="todo-list"></ul>
+
+        <div class="stats">
+            <span id="stats-text">0 items left</span>
+            <button id="clear-completed">Clear completed</button>
+        </div>
+    </div>
+</body>
+</html>
+
+<style scoped>
+body {
+    font-family: system-ui, sans-serif;
+    background: #f5f5f5;
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.container {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    width: 100%;
+    max-width: 600px;
+}
+
+h1 {
+    margin: 0 0 1.5rem 0;
+    color: #2563eb;
+    text-align: center;
+}
+
+.add-todo {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+#todo-input {
+    flex: 1;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 4px;
+}
+
+button {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+
+button:hover {
+    background: #1d4ed8;
+}
+
+.filters {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.filters button {
+    background: #e5e7eb;
+    color: #1f2937;
+}
+
+.filters button.active {
+    background: #2563eb;
+    color: white;
+}
+
+#todo-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+}
+
+.todo-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.todo-item input[type="checkbox"] {
+    margin-right: 1rem;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.todo-item span {
+    flex: 1;
+    font-size: 1.1rem;
+}
+
+.todo-item.completed span {
+    text-decoration: line-through;
+    color: #9ca3af;
+}
+
+.todo-item button {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+    background: #ef4444;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 2px solid #e5e7eb;
+}
+
+#stats-text {
+    color: #6b7280;
+}
+
+#clear-completed {
+    background: #6b7280;
+}
+</style>
+
+<script>
+import "fmt"
+import "syscall/js"
+import "github.com/withgalaxy/galaxy/pkg/store"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
+
+type Todo struct {
+    ID        int
+    Text      string
+    Completed bool
+}
+
+type TodoState struct {
+    Todos  []Todo
+    Filter string
+    NextID int
+}
+
+state := store.NewAtomWithHMR(TodoState{
+    Todos:  []Todo{},
+    Filter: "all",
+    NextID: 1,
+}, "todos-state")
+
+filteredTodos := store.NewComputed(state, func(s TodoState) []Todo {
+    if s.Filter == "active" {
+        result := []Todo{}
+        for _, todo := range s.Todos {
+            if !todo.Completed {
+                result = append(result, todo)
+            }
+        }
+        return result
+    } else if s.Filter == "completed" {
+        result := []Todo{}
+        for _, todo := range s.Todos {
+            if todo.Completed {
+                result = append(result, todo)
+            }
+        }
+        return result
+    }
+    return s.Todos
+})
+
+activeCount := store.NewComputed(state, func(s TodoState) int {
+    count := 0
+    for _, todo := range s.Todos {
+        if !todo.Completed {
+            count++
+        }
+    }
+    return count
+})
+
+todoList := wasmdom.GetElementById("todo-list")
+statsText := wasmdom.GetElementById("stats-text")
+
+func renderTodos() {
+    todos := filteredTodos.Get()
+    todoList.SetInnerHTML("")
+    
+    for _, todo := range todos {
+        li := wasmdom.CreateElement("li")
+        li.AddClass("todo-item")
+        if todo.Completed {
+            li.AddClass("completed")
+        }
+        
+        checked := ""
+        if todo.Completed {
+            checked = "checked"
+        }
+        
+        li.SetInnerHTML(fmt.Sprintf(`
+            <input type="checkbox" data-id="%d" %s>
+            <span>%s</span>
+            <button data-id="%d">Delete</button>
+        `, todo.ID, checked, todo.Text, todo.ID))
+        
+        todoList.Value.Call("appendChild", li.Value)
+    }
+    
+    checkboxes := wasmdom.QuerySelectorAll("input[type='checkbox']")
+    for _, cb := range checkboxes {
+        cb.AddEventListener("change", func() {
+            idStr := cb.GetAttribute("data-id")
+            var id int
+            fmt.Sscanf(idStr, "%d", &id)
+            toggleTodo(id)
+        })
+    }
+    
+    deleteButtons := wasmdom.QuerySelectorAll(".todo-item button")
+    for _, btn := range deleteButtons {
+        btn.AddEventListener("click", func() {
+            idStr := btn.GetAttribute("data-id")
+            var id int
+            fmt.Sscanf(idStr, "%d", &id)
+            deleteTodo(id)
+        })
+    }
+}
+
+func addTodo(text string) {
+    state.Update(func(s TodoState) TodoState {
+        s.Todos = append(s.Todos, Todo{
+            ID:        s.NextID,
+            Text:      text,
+            Completed: false,
+        })
+        s.NextID++
+        return s
+    })
+}
+
+func toggleTodo(id int) {
+    state.Update(func(s TodoState) TodoState {
+        for i := range s.Todos {
+            if s.Todos[i].ID == id {
+                s.Todos[i].Completed = !s.Todos[i].Completed
+                break
+            }
+        }
+        return s
+    })
+}
+
+func deleteTodo(id int) {
+    state.Update(func(s TodoState) TodoState {
+        newTodos := []Todo{}
+        for _, todo := range s.Todos {
+            if todo.ID != id {
+                newTodos = append(newTodos, todo)
+            }
+        }
+        s.Todos = newTodos
+        return s
+    })
+}
+
+func setFilter(filter string) {
+    state.Update(func(s TodoState) TodoState {
+        s.Filter = filter
+        return s
+    })
+    
+    wasmdom.QuerySelector(".filters button.active").RemoveClass("active")
+    wasmdom.GetElementById("filter-" + filter).AddClass("active")
+}
+
+filteredTodos.Subscribe(func(todos []Todo) {
+    renderTodos()
+})
+
+activeCount.Subscribe(func(count int) {
+    plural := "items"
+    if count == 1 {
+        plural = "item"
+    }
+    statsText.SetTextContent(fmt.Sprintf("%d %s left", count, plural))
+})
+
+wasmdom.GetElementById("add-btn").AddEventListener("click", func() {
+    input := wasmdom.GetElementById("todo-input")
+    text := input.GetValue()
+    if text != "" {
+        addTodo(text)
+        input.SetValue("")
+    }
+})
+
+todoInput := wasmdom.GetElementById("todo-input")
+todoInput.AddEventListenerWithEvent("keypress", func(e js.Value) {
+    if e.Get("key").String() == "Enter" {
+        text := todoInput.GetValue()
+        if text != "" {
+            addTodo(text)
+            todoInput.SetValue("")
+        }
+    }
+})
+
+wasmdom.GetElementById("filter-all").AddEventListener("click", func() {
+    setFilter("all")
+})
+
+wasmdom.GetElementById("filter-active").AddEventListener("click", func() {
+    setFilter("active")
+})
+
+wasmdom.GetElementById("filter-completed").AddEventListener("click", func() {
+    setFilter("completed")
+})
+
+wasmdom.GetElementById("clear-completed").AddEventListener("click", func() {
+    state.Update(func(s TodoState) TodoState {
+        newTodos := []Todo{}
+        for _, todo := range s.Todos {
+            if !todo.Completed {
+                newTodos = append(newTodos, todo)
+            }
+        }
+        s.Todos = newTodos
+        return s
+    })
+})
+
+renderTodos()
+statsText.SetTextContent(fmt.Sprintf("%d items left", activeCount.Get()))
+
+wasmdom.ConsoleLog("Todo app initialized with stores!")
+</script>

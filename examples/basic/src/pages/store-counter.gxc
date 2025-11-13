@@ -1,0 +1,221 @@
+---
+var title = "Store Counter Demo"
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+</head>
+<body>
+    <header>
+        <h1>{title}</h1>
+        <p>Reactive state management with nano stores</p>
+    </header>
+
+    <main>
+        <section class="demo">
+            <h2>Atom Store</h2>
+            <button id="increment">+</button>
+            <button id="decrement">-</button>
+            <button id="reset">Reset</button>
+            <p>Count: <span id="count">0</span></p>
+            <p>Doubled: <span id="doubled">0</span></p>
+        </section>
+
+        <section class="demo">
+            <h2>Map Store</h2>
+            <input type="text" id="name-input" placeholder="Enter name">
+            <button id="update-name">Update Name</button>
+            <input type="number" id="age-input" placeholder="Enter age">
+            <button id="update-age">Update Age</button>
+            <p>User: <span id="user-display">-</span></p>
+        </section>
+
+        <section class="demo">
+            <h2>Computed Store Chain</h2>
+            <input type="number" id="base-input" value="5">
+            <p>Base: <span id="base-value">5</span></p>
+            <p>Squared: <span id="squared-value">25</span></p>
+            <p>Cubed: <span id="cubed-value">125</span></p>
+        </section>
+    </main>
+</body>
+</html>
+
+<style scoped>
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: #f5f5f5;
+}
+
+header {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+h1 {
+    margin: 0 0 0.5rem 0;
+    color: #2563eb;
+}
+
+header p {
+    margin: 0;
+    color: #6b7280;
+}
+
+.demo {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+h2 {
+    margin-top: 0;
+    color: #1f2937;
+    font-size: 1.25rem;
+}
+
+button {
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    margin-right: 0.5rem;
+}
+
+button:hover {
+    background: #1d4ed8;
+}
+
+input {
+    padding: 0.5rem;
+    font-size: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    margin-right: 0.5rem;
+}
+
+p {
+    font-size: 1.1rem;
+    margin: 1rem 0;
+}
+
+span {
+    font-weight: bold;
+    color: #2563eb;
+}
+</style>
+
+<script>
+import "fmt"
+import "github.com/withgalaxy/galaxy/pkg/store"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
+
+count := store.NewAtomWithHMR(0, "counter")
+doubled := store.NewComputed(count, func(v int) int { return v * 2 })
+
+user := store.NewMapWithHMR(map[string]any{
+    "name": "Alice",
+    "age": 30,
+}, "user")
+
+baseNum := store.NewAtom(5)
+squared := store.NewComputed(baseNum, func(v int) int { return v * v })
+cubed := store.NewComputed(squared, func(v int) int { return v * baseNum.Get() })
+
+countDisplay := wasmdom.GetElementById("count")
+doubledDisplay := wasmdom.GetElementById("doubled")
+userDisplay := wasmdom.GetElementById("user-display")
+baseDisplay := wasmdom.GetElementById("base-value")
+squaredDisplay := wasmdom.GetElementById("squared-value")
+cubedDisplay := wasmdom.GetElementById("cubed-value")
+
+count.Subscribe(func(val int) {
+    countDisplay.SetTextContent(fmt.Sprintf("%d", val))
+})
+
+doubled.Subscribe(func(val int) {
+    doubledDisplay.SetTextContent(fmt.Sprintf("%d", val))
+})
+
+user.Subscribe(func(val map[string]any) {
+    name := val["name"]
+    age := val["age"]
+    userDisplay.SetTextContent(fmt.Sprintf("%v (age %v)", name, age))
+})
+
+baseNum.Subscribe(func(val int) {
+    baseDisplay.SetTextContent(fmt.Sprintf("%d", val))
+})
+
+squared.Subscribe(func(val int) {
+    squaredDisplay.SetTextContent(fmt.Sprintf("%d", val))
+})
+
+cubed.Subscribe(func(val int) {
+    cubedDisplay.SetTextContent(fmt.Sprintf("%d", val))
+})
+
+wasmdom.GetElementById("increment").AddEventListener("click", func() {
+    count.Update(func(v int) int { return v + 1 })
+})
+
+wasmdom.GetElementById("decrement").AddEventListener("click", func() {
+    count.Update(func(v int) int { return v - 1 })
+})
+
+wasmdom.GetElementById("reset").AddEventListener("click", func() {
+    count.Set(0)
+})
+
+wasmdom.GetElementById("update-name").AddEventListener("click", func() {
+    nameInput := wasmdom.GetElementById("name-input")
+    name := nameInput.GetValue()
+    if name != "" {
+        user.SetKey("name", name)
+        nameInput.SetValue("")
+    }
+})
+
+wasmdom.GetElementById("update-age").AddEventListener("click", func() {
+    ageInput := wasmdom.GetElementById("age-input")
+    ageStr := ageInput.GetValue()
+    if ageStr != "" {
+        user.SetKey("age", ageStr)
+        ageInput.SetValue("")
+    }
+})
+
+baseInput := wasmdom.GetElementById("base-input")
+baseInput.AddEventListener("input", func() {
+    val := baseInput.GetValue()
+    if val != "" {
+        var num int
+        fmt.Sscanf(val, "%d", &num)
+        baseNum.Set(num)
+    }
+})
+
+countDisplay.SetTextContent(fmt.Sprintf("%d", count.Get()))
+doubledDisplay.SetTextContent(fmt.Sprintf("%d", doubled.Get()))
+userVal := user.Get()
+userDisplay.SetTextContent(fmt.Sprintf("%v (age %v)", userVal["name"], userVal["age"]))
+baseDisplay.SetTextContent(fmt.Sprintf("%d", baseNum.Get()))
+squaredDisplay.SetTextContent(fmt.Sprintf("%d", squared.Get()))
+cubedDisplay.SetTextContent(fmt.Sprintf("%d", cubed.Get()))
+
+wasmdom.ConsoleLog("Store demo initialized!")
+</script>
