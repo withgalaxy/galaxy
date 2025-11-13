@@ -15,6 +15,7 @@ type PropInfo struct {
 	Name          string
 	Type          string
 	DefaultValue  string
+	Required      bool
 	Documentation string
 	Position      protocol.Range
 }
@@ -111,8 +112,9 @@ func extractPropsFromValueSpec(spec *ast.ValueSpec) []PropInfo {
 
 	for i, name := range spec.Names {
 		prop := PropInfo{
-			Name: name.Name,
-			Type: "interface{}",
+			Name:     name.Name,
+			Type:     "interface{}",
+			Required: true,
 		}
 
 		if spec.Type != nil {
@@ -127,6 +129,8 @@ func extractPropsFromValueSpec(spec *ast.ValueSpec) []PropInfo {
 			if basicLit, ok := spec.Values[i].(*ast.BasicLit); ok {
 				prop.DefaultValue = basicLit.Value
 			}
+
+			prop.Required = false
 		}
 
 		props = append(props, prop)

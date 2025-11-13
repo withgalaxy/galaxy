@@ -113,10 +113,12 @@ func (s *Server) extractVariablesFromStmts(stmts []ast.Stmt, scope *scopeInfo) {
 				if genDecl.Tok == token.VAR {
 					for _, spec := range genDecl.Specs {
 						if valueSpec, ok := spec.(*ast.ValueSpec); ok {
-							for _, name := range valueSpec.Names {
+							for i, name := range valueSpec.Names {
 								typeName := "interface{}"
 								if valueSpec.Type != nil {
 									typeName = exprToTypeName(valueSpec.Type)
+								} else if i < len(valueSpec.Values) {
+									typeName = inferTypeFromASTExpr(valueSpec.Values[i])
 								}
 								scope.variables[name.Name] = typeName
 							}
@@ -125,13 +127,76 @@ func (s *Server) extractVariablesFromStmts(stmts []ast.Stmt, scope *scopeInfo) {
 				}
 			}
 		case *ast.AssignStmt:
-			for _, lhs := range s.Lhs {
+			for i, lhs := range s.Lhs {
 				if ident, ok := lhs.(*ast.Ident); ok {
-					scope.variables[ident.Name] = "interface{}"
+					typeName := "interface{}"
+					if i < len(s.Rhs) {
+						typeName = inferTypeFromASTExpr(s.Rhs[i])
+					}
+					scope.variables[ident.Name] = typeName
 				}
 			}
 		}
 	}
+}
+
+func inferTypeFromASTExpr(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		switch e.Kind {
+		case token.INT:
+			return "int"
+		case token.FLOAT:
+			return "float64"
+		case token.STRING:
+			return "string"
+		case token.CHAR:
+			return "rune"
+		}
+	case *ast.CompositeLit:
+		if e.Type != nil {
+			return exprToTypeName(e.Type)
+		}
+	case *ast.CallExpr:
+		if ident, ok := e.Fun.(*ast.Ident); ok {
+			switch ident.Name {
+			case "make":
+				if len(e.Args) > 0 {
+					return exprToTypeName(e.Args[0])
+				}
+			case "new":
+				if len(e.Args) > 0 {
+					return "*" + exprToTypeName(e.Args[0])
+				}
+			case "int", "int8", "int16", "int32", "int64":
+				return ident.Name
+			case "uint", "uint8", "uint16", "uint32", "uint64":
+				return ident.Name
+			case "float32", "float64":
+				return ident.Name
+			case "string", "bool", "byte", "rune":
+				return ident.Name
+			}
+		}
+	case *ast.UnaryExpr:
+		if e.Op == token.AND {
+			return "*" + inferTypeFromASTExpr(e.X)
+		}
+	case *ast.IndexExpr:
+		baseType := inferTypeFromASTExpr(e.X)
+		if strings.HasPrefix(baseType, "[]") {
+			return strings.TrimPrefix(baseType, "[]")
+		}
+		if strings.HasPrefix(baseType, "map[") {
+			parts := strings.SplitN(baseType, "]", 2)
+			if len(parts) == 2 {
+				return parts[1]
+			}
+		}
+	case *ast.SelectorExpr:
+		return "interface{}"
+	}
+	return "interface{}"
 }
 
 func (s *Server) validateExpressions(template string, scope *scopeInfo, fullContent string) []protocol.Diagnostic {
@@ -447,6 +512,24 @@ func (s *Server) validateComponentUsage(fullContent string, scope *scopeInfo) []
 			continue
 		}
 
+		// Check required props
+		for _, expectedProp := range compInfo.Props {
+			if expectedProp.Required {
+				if _, provided := usage.props[expectedProp.Name]; !provided {
+					line, col := lineColFromOffset(fullContent, usage.namePos)
+					diagnostics = append(diagnostics, protocol.Diagnostic{
+						Range: protocol.Range{
+							Start: protocol.Position{Line: uint32(line - 1), Character: uint32(col)},
+							End:   protocol.Position{Line: uint32(line - 1), Character: uint32(col + len(usage.name))},
+						},
+						Severity: protocol.DiagnosticSeverityError,
+						Source:   "gxc-component",
+						Message:  fmt.Sprintf("Missing required prop '%s' for component %s", expectedProp.Name, usage.name),
+					})
+				}
+			}
+		}
+
 		// Validate prop types
 		for propName, propUsage := range usage.props {
 			// Find expected prop
@@ -536,11 +619,12 @@ func (s *Server) parseComponentUsages(template string) []componentUsage {
 			props:   make(map[string]propUsage),
 		}
 
-		// Parse attributes
-		attrRegex := regexp.MustCompile(`(\w+)=\{([^}]+)\}`)
-		attrMatches := attrRegex.FindAllStringSubmatchIndex(attrsString, -1)
+		// Parse attributes - both {expr} and "string"
+		attrRegexBrace := regexp.MustCompile(`(\w+)=\{([^}]+)\}`)
+		attrRegexString := regexp.MustCompile(`(\w+)="([^"]*)"`)
 
-		for _, attrMatch := range attrMatches {
+		braceMatches := attrRegexBrace.FindAllStringSubmatchIndex(attrsString, -1)
+		for _, attrMatch := range braceMatches {
 			propName := attrsString[attrMatch[2]:attrMatch[3]]
 			propValue := attrsString[attrMatch[4]:attrMatch[5]]
 
@@ -549,6 +633,21 @@ func (s *Server) parseComponentUsages(template string) []componentUsage {
 				valueType: inferTypeFromValue(propValue),
 				namePos:   match[4] + attrMatch[2],
 				valuePos:  match[4] + attrMatch[4],
+			}
+		}
+
+		stringMatches := attrRegexString.FindAllStringSubmatchIndex(attrsString, -1)
+		for _, attrMatch := range stringMatches {
+			propName := attrsString[attrMatch[2]:attrMatch[3]]
+			propValue := attrsString[attrMatch[4]:attrMatch[5]]
+
+			if _, exists := usage.props[propName]; !exists {
+				usage.props[propName] = propUsage{
+					value:     `"` + propValue + `"`,
+					valueType: "string",
+					namePos:   match[4] + attrMatch[2],
+					valuePos:  match[4] + attrMatch[4],
+				}
 			}
 		}
 
@@ -601,6 +700,18 @@ func (s *Server) inferTypeFromScope(value string, scope *scopeInfo) string {
 
 	// Look up in scope
 	if varType, exists := scope.variables[baseVar]; exists {
+		// Handle indexing: data["key"] or items[0]
+		if strings.Contains(value, "[") {
+			if strings.HasPrefix(varType, "[]") {
+				return strings.TrimPrefix(varType, "[]")
+			}
+			if strings.HasPrefix(varType, "map[") {
+				parts := strings.SplitN(varType[4:], "]", 2)
+				if len(parts) == 2 {
+					return parts[1]
+				}
+			}
+		}
 		return varType
 	}
 

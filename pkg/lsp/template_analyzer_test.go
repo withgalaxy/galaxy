@@ -147,6 +147,46 @@ var name string = "Alice"
 <TestComponent userName={name} />`,
 			expectedCount: 0,
 		},
+		{
+			name: "type conversion detection",
+			content: `---
+numStr := string(123)
+---
+<TestComponent userName={numStr} />`,
+			expectedCount: 0,
+		},
+		{
+			name: "slice element type",
+			content: `---
+items := []string{"a", "b"}
+---
+<TestComponent userName={items[0]} />`,
+			expectedCount: 0,
+		},
+		{
+			name: "map value type",
+			content: `---
+data := map[string]int{"count": 5}
+---
+<TestComponent userName={data["count"]} />`,
+			expectedCount: 1,
+			expectedMsg:   "Type mismatch for prop 'userName': expected string, got int. Hint: convert with fmt.Sprintf",
+		},
+		{
+			name: "missing required prop",
+			content: `---
+---
+<RequiredProps count={5} />`,
+			expectedCount: 1,
+			expectedMsg:   "Missing required prop 'title' for component RequiredProps",
+		},
+		{
+			name: "optional prop can be omitted",
+			content: `---
+---
+<RequiredProps title="Test" />`,
+			expectedCount: 0,
+		},
 	}
 
 	for _, tt := range tests {
