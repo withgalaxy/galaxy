@@ -337,25 +337,22 @@ func (s *Server) Definition(ctx context.Context, params *protocol.DefinitionPara
 		return nil, nil
 	}
 
-	componentName := getComponentAtPosition(state.Content, params.Position)
-	if componentName == "" {
+	// Detect what cursor is on
+	target := detectDefinitionContext(state.Content, params.Position)
+
+	switch target.Context {
+	case ContextComponentName:
+		return s.goToComponent(target.ComponentName)
+
+	case ContextPropName:
+		return s.goToPropDefinition(target.ComponentName, target.PropName)
+
+	case ContextVariableName:
+		return s.goToVariableDefinition(params.TextDocument.URI, state.Content, target.VariableName)
+
+	default:
 		return nil, nil
 	}
-
-	componentPath := findComponentFile(s.rootPath, componentName)
-	if componentPath == "" {
-		return nil, nil
-	}
-
-	return []protocol.Location{
-		{
-			URI: protocol.DocumentURI("file://" + componentPath),
-			Range: protocol.Range{
-				Start: protocol.Position{Line: 0, Character: 0},
-				End:   protocol.Position{Line: 0, Character: 0},
-			},
-		},
-	}, nil
 }
 
 func (s *Server) loadComponentInfo(componentPath string) (*ComponentInfo, error) {

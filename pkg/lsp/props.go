@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	goparser "go/parser"
 	"go/token"
+	"os"
 	"strings"
 
 	"github.com/withgalaxy/galaxy/pkg/parser"
@@ -253,4 +254,49 @@ func getAttributeAtPosition(content string, pos protocol.Position) (componentNam
 	}
 
 	return compName, attrName, true
+}
+
+func FindPropDefinitionLine(filePath string, propName string) (int, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, err
+	}
+
+	comp, err := parser.Parse(string(content))
+	if err != nil {
+		return 0, err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	frontmatterStart := -1
+	dashCount := 0
+
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "---" {
+			dashCount++
+			if dashCount == 1 {
+				frontmatterStart = i + 1
+			} else if dashCount == 2 {
+				break
+			}
+		}
+	}
+
+	if frontmatterStart == -1 {
+		return 0, fmt.Errorf("no frontmatter found")
+	}
+
+	// Search for var propName in frontmatter
+	frontmatterLines := strings.Split(comp.Frontmatter, "\n")
+	for i, line := range frontmatterLines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "var "+propName+" ") ||
+			strings.HasPrefix(trimmed, "var "+propName+"=") ||
+			strings.Contains(trimmed, " "+propName+" ") ||
+			strings.Contains(trimmed, " "+propName+":=") {
+			return frontmatterStart + i, nil
+		}
+	}
+
+	return 0, fmt.Errorf("prop %s not found", propName)
 }
