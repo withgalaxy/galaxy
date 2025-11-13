@@ -225,7 +225,6 @@ func (s *Server) getComponentPropCompletions(content string, pos protocol.Positi
 	for i := tagStart; i < len(line); i++ {
 		if line[i] == '>' {
 			if i >= cursor {
-				// Cursor is before closing >, we're inside tag
 				foundClosing = true
 			}
 			break
@@ -264,6 +263,12 @@ func (s *Server) getComponentPropCompletions(content string, pos protocol.Positi
 	}
 	fmt.Fprintf(os.Stderr, "=== Component has %d props\n", len(componentInfo.Props))
 
+	// Check if cursor inside prop value {|}
+	propName, insideValue := s.detectPropValueContext(line[:cursor])
+	if insideValue && propName != "" {
+		return s.getTypedVariableCompletions(content, propName, componentInfo)
+	}
+
 	// Extract already-used props
 	usedProps := extractUsedPropsFromTag(line[tagStart:])
 	fmt.Fprintf(os.Stderr, "=== Used props: %v\n", usedProps)
@@ -293,7 +298,6 @@ func (s *Server) getComponentPropCompletions(content string, pos protocol.Positi
 func extractUsedPropsFromTag(tagContent string) map[string]bool {
 	used := make(map[string]bool)
 
-	// Simple regex to find attribute names
 	parts := strings.Fields(tagContent)
 	for i := 1; i < len(parts); i++ {
 		attr := parts[i]
@@ -307,4 +311,74 @@ func extractUsedPropsFromTag(tagContent string) map[string]bool {
 	}
 
 	return used
+}
+
+func (s *Server) detectPropValueContext(beforeCursor string) (propName string, insideValue bool) {
+	// Check if cursor inside {|}
+	lastOpen := strings.LastIndex(beforeCursor, "{")
+	lastClose := strings.LastIndex(beforeCursor, "}")
+
+	if lastOpen == -1 || lastClose > lastOpen {
+		return "", false
+	}
+
+	// Find prop name before {
+	beforeBrace := strings.TrimSpace(beforeCursor[:lastOpen])
+	if !strings.HasSuffix(beforeBrace, "=") {
+		return "", false
+	}
+
+	// Extract propName from "propName="
+	words := strings.Fields(beforeBrace)
+	if len(words) == 0 {
+		return "", false
+	}
+
+	lastWord := words[len(words)-1]
+	propName = strings.TrimSuffix(lastWord, "=")
+
+	return propName, true
+}
+
+func (s *Server) getTypedVariableCompletions(content string, propName string, compInfo *ComponentInfo) ([]protocol.CompletionItem, bool) {
+	items := make([]protocol.CompletionItem, 0)
+
+	// Find expected type for this prop
+	var expectedType string
+	for _, prop := range compInfo.Props {
+		if prop.Name == propName {
+			expectedType = prop.Type
+			break
+		}
+	}
+
+	if expectedType == "" {
+		return items, true
+	}
+
+	// Build scope from frontmatter
+	comp, err := parser.Parse(content)
+	if err != nil {
+		return items, true
+	}
+
+	scope := s.buildScopeFromFrontmatter(comp.Frontmatter)
+	for _, script := range comp.Scripts {
+		if script.Language == "go" {
+			s.addScriptVariablesToScope(script.Content, scope)
+		}
+	}
+
+	// Filter variables by type
+	for varName, varType := range scope.variables {
+		if isTypeCompatible(varType, expectedType) {
+			items = append(items, protocol.CompletionItem{
+				Label:  varName,
+				Kind:   protocol.CompletionItemKindVariable,
+				Detail: varType,
+			})
+		}
+	}
+
+	return items, true
 }

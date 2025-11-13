@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/withgalaxy/galaxy/pkg/lsp"
 	"github.com/spf13/cobra"
+	"github.com/withgalaxy/galaxy/pkg/lsp"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
@@ -69,6 +69,13 @@ func runLSP(cmd *cobra.Command, args []string) error {
 				return reply(ctx, nil, err)
 			}
 			return reply(ctx, nil, server.DidClose(ctx, &params))
+
+		case "textDocument/didSave":
+			var params protocol.DidSaveTextDocumentParams
+			if err := json.Unmarshal(req.Params(), &params); err != nil {
+				return reply(ctx, nil, err)
+			}
+			return reply(ctx, nil, server.DidSave(ctx, &params))
 
 		case "textDocument/completion":
 			var params protocol.CompletionParams

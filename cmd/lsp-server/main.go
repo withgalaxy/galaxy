@@ -76,6 +76,13 @@ func main() {
 			}
 			return reply(ctx, nil, server.DidClose(ctx, &params))
 
+		case "textDocument/didSave":
+			var params protocol.DidSaveTextDocumentParams
+			if err := json.Unmarshal(req.Params(), &params); err != nil {
+				return reply(ctx, nil, err)
+			}
+			return reply(ctx, nil, server.DidSave(ctx, &params))
+
 		case "textDocument/completion":
 			var params protocol.CompletionParams
 			if err := json.Unmarshal(req.Params(), &params); err != nil {

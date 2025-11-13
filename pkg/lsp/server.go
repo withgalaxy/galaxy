@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/withgalaxy/galaxy/pkg/parser"
@@ -61,6 +62,7 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 			TextDocumentSync: protocol.TextDocumentSyncOptions{
 				OpenClose: true,
 				Change:    protocol.TextDocumentSyncKindFull,
+				Save:      &protocol.SaveOptions{IncludeText: false},
 			},
 			CompletionProvider: &protocol.CompletionOptions{
 				TriggerCharacters: []string{"{", ":", " ", "."},
@@ -130,6 +132,7 @@ func (s *Server) DidClose(ctx context.Context, params *protocol.DidCloseTextDocu
 }
 
 func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocumentParams) error {
+	s.invalidateComponentCache(params.TextDocument.URI)
 	return nil
 }
 
@@ -379,4 +382,31 @@ func (s *Server) loadComponentInfo(componentPath string) (*ComponentInfo, error)
 	s.componentMu.Unlock()
 
 	return info, nil
+}
+
+func (s *Server) invalidateComponentCache(uri protocol.DocumentURI) {
+	path := string(uri)
+	if strings.HasPrefix(path, "file://") {
+		path = path[7:]
+	}
+
+	s.componentMu.Lock()
+	delete(s.componentCache, path)
+	s.componentMu.Unlock()
+
+	// Re-analyze all open files that might use this component
+	s.reanalyzeOpenFiles(context.Background())
+}
+
+func (s *Server) reanalyzeOpenFiles(ctx context.Context) {
+	s.cacheMu.RLock()
+	openFiles := make(map[protocol.DocumentURI]*DocumentState)
+	for uri, state := range s.cache {
+		openFiles[uri] = state
+	}
+	s.cacheMu.RUnlock()
+
+	for uri, state := range openFiles {
+		go s.publishDiagnostics(ctx, uri, state.Content)
+	}
 }
