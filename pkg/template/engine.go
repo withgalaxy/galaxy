@@ -57,6 +57,7 @@ func (e *Engine) Render(template string, opts *RenderOptions) (string, error) {
 		result = e.renderDirectives(result)
 	}
 
+	result = e.processClassList(result)
 	result = e.renderHtmlExpressions(result)
 	result = e.renderExpressions(result)
 
@@ -895,4 +896,110 @@ func (e *Engine) evaluateExpression(expr string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func (e *Engine) processClassList(template string) string {
+	tagRegex := regexp.MustCompile(`<([a-zA-Z][a-zA-Z0-9]*)\s+([^>]*classList=\{\{[^}]+\}\}[^>]*)>`)
+
+	return tagRegex.ReplaceAllStringFunc(template, func(match string) string {
+		matches := tagRegex.FindStringSubmatch(match)
+		if len(matches) < 3 {
+			return match
+		}
+
+		tagName := matches[1]
+		attrs := matches[2]
+
+		classListRegex := regexp.MustCompile(`classList=\{\{([^}]+)\}\}`)
+		classListMatches := classListRegex.FindStringSubmatch(attrs)
+		if len(classListMatches) < 2 {
+			return match
+		}
+
+		classListContent := classListMatches[1]
+		classListClasses := e.parseClassList(classListContent)
+
+		existingClassRegex := regexp.MustCompile(`class="([^"]*)"`)
+		existingMatches := existingClassRegex.FindStringSubmatch(attrs)
+
+		var allClasses []string
+		if len(existingMatches) > 1 && existingMatches[1] != "" {
+			existingClasses := strings.Fields(existingMatches[1])
+			allClasses = append(allClasses, existingClasses...)
+		}
+
+		classMap := make(map[string]bool)
+		for _, c := range allClasses {
+			classMap[c] = true
+		}
+		for _, c := range classListClasses {
+			if !classMap[c] {
+				allClasses = append(allClasses, c)
+				classMap[c] = true
+			}
+		}
+
+		newAttrs := classListRegex.ReplaceAllString(attrs, "")
+		if len(existingMatches) > 0 {
+			newAttrs = existingClassRegex.ReplaceAllString(newAttrs, "")
+		}
+
+		newAttrs = strings.TrimSpace(newAttrs)
+
+		if len(allClasses) > 0 {
+			classAttr := fmt.Sprintf(`class="%s"`, strings.Join(allClasses, " "))
+			if newAttrs != "" {
+				return fmt.Sprintf("<%s %s %s>", tagName, classAttr, newAttrs)
+			}
+			return fmt.Sprintf("<%s %s>", tagName, classAttr)
+		}
+
+		if newAttrs != "" {
+			return fmt.Sprintf("<%s %s>", tagName, newAttrs)
+		}
+		return fmt.Sprintf("<%s>", tagName)
+	})
+}
+
+func (e *Engine) parseClassList(content string) []string {
+	var classes []string
+	pairRegex := regexp.MustCompile(`"([^"]+)"\s*:\s*([^,}]+)`)
+	matches := pairRegex.FindAllStringSubmatch(content, -1)
+
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+
+		className := match[1]
+		condition := strings.TrimSpace(match[2])
+
+		if e.evaluateClassCondition(condition) {
+			classes = append(classes, className)
+		}
+	}
+
+	return classes
+}
+
+func (e *Engine) evaluateClassCondition(condition string) bool {
+	condition = strings.TrimSpace(condition)
+
+	if strings.HasPrefix(condition, "!") {
+		varName := strings.TrimSpace(condition[1:])
+		val := e.evaluateValue(varName)
+		return !e.isTruthy(val)
+	}
+
+	if strings.Contains(condition, "==") ||
+		strings.Contains(condition, "!=") ||
+		strings.Contains(condition, ">=") ||
+		strings.Contains(condition, "<=") ||
+		strings.Contains(condition, ">") ||
+		strings.Contains(condition, "<") {
+		return e.evaluateCondition(condition)
+	}
+
+	val := e.evaluateValue(condition)
+	return e.isTruthy(val)
 }

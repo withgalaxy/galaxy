@@ -1,0 +1,97 @@
+---
+var isActive = true
+var hasError = false
+var isLoading = false
+var count = 7
+var status = "success"
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>classList Demo</title>
+</head>
+<body>
+    <h1>Galaxy classList Feature Demo</h1>
+    
+    <div classList={{"active": isActive, "error": hasError, "loading": isLoading}}>
+        Basic classList: active=true, error=false, loading=false
+    </div>
+    
+    <div class="base container" classList={{"active": isActive}}>
+        Merged with static class attribute
+    </div>
+    
+    <div classList={{"many-items": count > 5, "success": status == "success"}}>
+        Conditional classes with expressions: count={count}, status={status}
+    </div>
+    
+    <div classList={{"hidden": !isActive}}>
+        Negation: hidden when NOT active
+    </div>
+    
+    <button classList={{"btn-primary": isActive, "btn-disabled": hasError}}>
+        Dynamic Button
+    </button>
+</body>
+</html>
+
+<style scoped>
+body {
+    font-family: sans-serif;
+    padding: 2rem;
+    line-height: 1.6;
+}
+
+div {
+    padding: 1rem;
+    margin: 1rem 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.active {
+    background-color: #d4edda;
+    border-color: #28a745;
+}
+
+.error {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+}
+
+.loading {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.many-items {
+    font-weight: bold;
+}
+
+.success {
+    color: #28a745;
+}
+
+.hidden {
+    display: none;
+}
+
+button {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+</style>
