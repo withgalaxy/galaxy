@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/withgalaxy/galaxy/pkg/adapters"
+	"github.com/withgalaxy/galaxy/pkg/adapters/cloudflare"
 	"github.com/withgalaxy/galaxy/pkg/adapters/netlify"
 	"github.com/withgalaxy/galaxy/pkg/adapters/vercel"
 	"github.com/withgalaxy/galaxy/pkg/assets"
@@ -131,6 +132,12 @@ func (b *SSGBuilder) Build() error {
 	if b.Config.Adapter.Name == config.AdapterNetlify {
 		if err := b.runNetlifyAdapter(); err != nil {
 			return fmt.Errorf("netlify adapter: %w", err)
+		}
+	}
+
+	if b.Config.Adapter.Name == config.AdapterCloudflare {
+		if err := b.runCloudflareAdapter(); err != nil {
+			return fmt.Errorf("cloudflare adapter: %w", err)
 		}
 	}
 
@@ -503,6 +510,29 @@ func (b *SSGBuilder) runVercelAdapter() error {
 
 func (b *SSGBuilder) runNetlifyAdapter() error {
 	adapter := netlify.New()
+
+	routeInfos := make([]adapters.RouteInfo, len(b.Router.Routes))
+	for i, route := range b.Router.Routes {
+		routeInfos[i] = adapters.RouteInfo{
+			Pattern:    route.Pattern,
+			FilePath:   route.FilePath,
+			IsEndpoint: route.IsEndpoint,
+		}
+	}
+
+	adapterCfg := &adapters.BuildConfig{
+		Config:    b.Config,
+		ServerDir: "",
+		OutDir:    b.OutDir,
+		PagesDir:  b.PagesDir,
+		PublicDir: b.PublicDir,
+		Routes:    routeInfos,
+	}
+
+	return adapter.Build(adapterCfg)
+}
+func (b *SSGBuilder) runCloudflareAdapter() error {
+	adapter := cloudflare.New()
 
 	routeInfos := make([]adapters.RouteInfo, len(b.Router.Routes))
 	for i, route := range b.Router.Routes {

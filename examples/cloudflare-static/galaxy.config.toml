@@ -1,0 +1,8 @@
+site = "https://my-galaxy-app.pages.dev"
+base = "/"
+
+[output]
+type = "static"
+
+[adapter]
+name = "cloudflare"
