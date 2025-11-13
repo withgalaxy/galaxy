@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/withgalaxy/galaxy/pkg/adapters"
+	"github.com/withgalaxy/galaxy/pkg/adapters/vercel"
 	"github.com/withgalaxy/galaxy/pkg/assets"
 	"github.com/withgalaxy/galaxy/pkg/compiler"
 	"github.com/withgalaxy/galaxy/pkg/config"
@@ -117,6 +119,12 @@ func (b *SSGBuilder) Build() error {
 
 	if err := b.PluginManager.BuildEnd(buildCtx); err != nil {
 		return fmt.Errorf("plugin BuildEnd: %w", err)
+	}
+
+	if b.Config.Adapter.Name == config.AdapterVercel {
+		if err := b.runVercelAdapter(); err != nil {
+			return fmt.Errorf("vercel adapter: %w", err)
+		}
 	}
 
 	return nil
@@ -460,4 +468,28 @@ func (b *SSGBuilder) copyWasmExec() error {
 
 	wasmExecDest := filepath.Join(b.OutDir, "wasm_exec.js")
 	return os.WriteFile(wasmExecDest, data, 0644)
+}
+
+func (b *SSGBuilder) runVercelAdapter() error {
+	adapter := vercel.New()
+
+	routeInfos := make([]adapters.RouteInfo, len(b.Router.Routes))
+	for i, route := range b.Router.Routes {
+		routeInfos[i] = adapters.RouteInfo{
+			Pattern:    route.Pattern,
+			FilePath:   route.FilePath,
+			IsEndpoint: route.IsEndpoint,
+		}
+	}
+
+	adapterCfg := &adapters.BuildConfig{
+		Config:    b.Config,
+		ServerDir: "",
+		OutDir:    b.OutDir,
+		PagesDir:  b.PagesDir,
+		PublicDir: b.PublicDir,
+		Routes:    routeInfos,
+	}
+
+	return adapter.Build(adapterCfg)
 }

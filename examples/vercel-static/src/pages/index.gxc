@@ -1,0 +1,54 @@
+---
+title := "Welcome to Galaxy on Vercel"
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+</head>
+<body>
+    <main>
+        <h1>{title}</h1>
+        <p>This is a static site built with Galaxy and deployed to Vercel.</p>
+        <nav>
+            <a href="/about">About</a>
+        </nav>
+    </main>
+</body>
+</html>
+
+<style scoped>
+    body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+    }
+    
+    h1 {
+        color: #5e35b1;
+        margin-bottom: 1rem;
+    }
+    
+    nav {
+        margin-top: 2rem;
+    }
+    
+    a {
+        color: #5e35b1;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border: 2px solid #5e35b1;
+        border-radius: 4px;
+        display: inline-block;
+    }
+    
+    a:hover {
+        background: #5e35b1;
+        color: white;
+    }
+</style>

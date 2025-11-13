@@ -57,6 +57,20 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if c.Adapter.Name == AdapterVercel && c.Output.Type != OutputStatic {
+		return fmt.Errorf(`vercel adapter only supports static output
+
+Current configuration:
+  output.type = "%s"
+  adapter.name = "vercel"
+
+Vercel does not support Go-based serverless functions. To fix this:
+  1. Change output.type = "static" in galaxy.config.toml, OR
+  2. Use adapter.name = "standalone" for SSR/hybrid output
+
+For SSR deployments, use the standalone adapter with platforms like Docker, Railway, or Fly.io`, c.Output.Type)
+	}
+
 	if c.Server.Port == 0 {
 		c.Server.Port = 4322
 	}

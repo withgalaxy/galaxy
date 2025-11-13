@@ -1,0 +1,8 @@
+site = "https://my-galaxy-app.vercel.app"
+base = "/"
+
+[output]
+type = "static"
+
+[adapter]
+name = "vercel"
