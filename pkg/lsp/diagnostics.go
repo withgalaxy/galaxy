@@ -40,5 +40,8 @@ func (s *Server) analyze(content string) []protocol.Diagnostic {
 		}
 	}
 
+	// Validate template expressions and directives
+	diagnostics = append(diagnostics, s.analyzeTemplate(content)...)
+
 	return diagnostics
 }
