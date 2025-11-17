@@ -42,9 +42,12 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'gxc' }],
+    documentSelector: [
+      { scheme: 'file', language: 'gxc' },
+      { scheme: 'file', pattern: '**/galaxy.config.toml' }
+    ],
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher('**/*.gxc')
+      fileEvents: vscode.workspace.createFileSystemWatcher('**/*.{gxc,toml}')
     },
     workspaceFolder: vscode.workspace.workspaceFolders?.[0],
     initializationOptions: {}

@@ -65,7 +65,7 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 				Save:      &protocol.SaveOptions{IncludeText: false},
 			},
 			CompletionProvider: &protocol.CompletionOptions{
-				TriggerCharacters: []string{"{", ":", " ", "."},
+				TriggerCharacters: []string{"{", ":", " ", ".", "=", "["},
 			},
 			HoverProvider:      true,
 			DefinitionProvider: interface{}(true),
@@ -137,7 +137,13 @@ func (s *Server) DidSave(ctx context.Context, params *protocol.DidSaveTextDocume
 }
 
 func (s *Server) publishDiagnostics(ctx context.Context, uri protocol.DocumentURI, content string) {
-	diagnostics := s.analyze(content)
+	var diagnostics []protocol.Diagnostic
+
+	if IsTOMLFile(uri) {
+		diagnostics = s.analyzeTOML(content)
+	} else {
+		diagnostics = s.analyze(content)
+	}
 
 	err := s.conn.Notify(ctx, "textDocument/publishDiagnostics", &protocol.PublishDiagnosticsParams{
 		URI:         uri,
@@ -160,6 +166,12 @@ func (s *Server) Completion(ctx context.Context, params *protocol.CompletionPara
 	if !ok {
 		fmt.Fprintf(os.Stderr, "=== NO CACHED STATE ===\n")
 		return &protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil
+	}
+
+	// Check if TOML file
+	if IsTOMLFile(params.TextDocument.URI) {
+		fmt.Fprintf(os.Stderr, "=== TOML FILE - USING TOML COMPLETIONS ===\n")
+		return s.getTOMLCompletions(state.Content, params.Position)
 	}
 
 	// Check if in frontmatter - delegate to gopls
@@ -192,6 +204,11 @@ func (s *Server) Hover(ctx context.Context, params *protocol.HoverParams) (*prot
 
 	if !ok {
 		return nil, nil
+	}
+
+	// Check if TOML file
+	if IsTOMLFile(params.TextDocument.URI) {
+		return s.getTOMLHover(state.Content, params.Position)
 	}
 
 	// Check if in frontmatter - delegate to gopls

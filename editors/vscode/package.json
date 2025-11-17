@@ -16,7 +16,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:gxc"
+    "onLanguage:gxc",
+    "workspaceContains:**/galaxy.config.toml"
   ],
   "main": "./client/out/extension.js",
   "contributes": {
