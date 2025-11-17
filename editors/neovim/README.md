@@ -1,267 +1,122 @@
-# GXC Language Support for Neovim
+# NeoVim Support for Galaxy (.gxc)
 
-Language server support for `.gxc` files (Galaxy components) and `galaxy.config.toml` in Neovim.
-
-## Features
-
-- **Diagnostics**: Real-time error checking for Go syntax and undefined variables
-- **Auto-completion**: Variables from frontmatter, galaxy directives, TOML configuration options
-- **Hover Info**: Type information and values for variables
-- **Go to Definition**: Jump to variable declarations in frontmatter
-- **TOML Support**: Validation and completions for `galaxy.config.toml` files
+NeoVim setup for `.gxc` file syntax highlighting and LSP support.
 
 ## Prerequisites
 
-1. Install Galaxy CLI:
+- NeoVim 0.8+
+- `galaxy` CLI installed and in PATH
+- [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) plugin
+
+## Installation
+
+### Option 1: Manual Installation
+
+1. Copy plugin files to your NeoVim config:
 ```bash
-go install github.com/withgalaxy/galaxy/cmd/galaxy@v0.46.0-alpha.2
+cp -r editors/nvim/* ~/.config/nvim/
 ```
 
-2. Ensure `galaxy` is in your PATH:
-```bash
-which galaxy  # Should print the path to galaxy binary
-```
-
-3. Install `nvim-lspconfig` plugin (if not already installed)
-
-## Configuration
-
-### Using lazy.nvim
-
-Add to your Neovim configuration:
-
+2. Add LSP setup to your `init.lua`:
 ```lua
-return {
-  {
-    "neovim/nvim-lspconfig",
-    config = function()
-      local lspconfig = require("lspconfig")
-      local configs = require("lspconfig.configs")
-
-      -- Register gxc language server
-      if not configs.gxc then
-        configs.gxc = {
-          default_config = {
-            cmd = { "galaxy", "lsp-server" },
-            filetypes = { "gxc" },
-            root_dir = lspconfig.util.root_pattern("galaxy.config.toml", ".git"),
-            settings = {},
-          },
-        }
-      end
-
-      -- Setup gxc LSP
-      lspconfig.gxc.setup({
-        on_attach = function(client, bufnr)
-          -- Your on_attach configuration
-        end,
-        capabilities = require("cmp_nvim_lsp").default_capabilities(),
-      })
-    end,
-  },
-}
+require'lspconfig'.gxc.setup{}
 ```
 
-### Using Packer
+### Option 2: Using lazy.nvim
 
+Add to your plugins:
 ```lua
-use {
-  "neovim/nvim-lspconfig",
+{
+  'neovim/nvim-lspconfig',
   config = function()
-    local lspconfig = require("lspconfig")
-    local configs = require("lspconfig.configs")
-
+    local lspconfig = require('lspconfig')
+    
+    local configs = require('lspconfig.configs')
     if not configs.gxc then
       configs.gxc = {
         default_config = {
-          cmd = { "galaxy", "lsp-server" },
-          filetypes = { "gxc" },
-          root_dir = lspconfig.util.root_pattern("galaxy.config.toml", ".git"),
-          settings = {},
+          cmd = { 'galaxy', 'lsp-server', '--stdio' },
+          filetypes = { 'gxc' },
+          root_dir = lspconfig.util.root_pattern('galaxy.config.json', 'galaxy.config.toml', '.git'),
+          single_file_support = true,
         },
       }
     end
-
-    lspconfig.gxc.setup({})
-  end,
+    
+    lspconfig.gxc.setup{}
+  end
 }
 ```
 
-### Minimal Setup (init.lua)
+Then add syntax files:
+```bash
+mkdir -p ~/.config/nvim/{ftdetect,syntax}
+cp editors/nvim/ftdetect/gxc.vim ~/.config/nvim/ftdetect/
+cp editors/nvim/syntax/gxc.vim ~/.config/nvim/syntax/
+```
+
+### Option 3: Using packer.nvim
 
 ```lua
-local lspconfig = require("lspconfig")
-local configs = require("lspconfig.configs")
-
--- Register gxc language server
-if not configs.gxc then
-  configs.gxc = {
-    default_config = {
-      cmd = { "galaxy", "lsp-server" },
-      filetypes = { "gxc" },
-      root_dir = lspconfig.util.root_pattern("galaxy.config.toml", ".git"),
-      settings = {},
-    },
-  }
-end
-
--- Setup gxc LSP
-lspconfig.gxc.setup({})
+use {
+  'neovim/nvim-lspconfig',
+  config = function()
+    local lspconfig = require('lspconfig')
+    local configs = require('lspconfig.configs')
+    
+    if not configs.gxc then
+      configs.gxc = {
+        default_config = {
+          cmd = { 'galaxy', 'lsp-server', '--stdio' },
+          filetypes = { 'gxc' },
+          root_dir = lspconfig.util.root_pattern('galaxy.config.json', 'galaxy.config.toml', '.git'),
+          single_file_support = true,
+        },
+      }
+    end
+    
+    lspconfig.gxc.setup{}
+  end
+}
 ```
 
-## File Type Detection
+## Features
 
-Add to your Neovim configuration to detect `.gxc` files:
+### Syntax Highlighting
+- Frontmatter (Go code between `---`)
+- HTML template syntax
+- `<script>` tags (JavaScript)
+- `<style>` tags (CSS)
+- Template interpolation `{variable}`
+- Galaxy directives (`galaxy:if`, `galaxy:for`, `galaxy:else`)
 
-```lua
-vim.filetype.add({
-  extension = {
-    gxc = "gxc",
-  },
-})
-```
+### LSP Features
+- Diagnostics
+- Auto-completion
+- Hover information
 
-Or create `~/.config/nvim/ftdetect/gxc.vim`:
+## Verification
 
-```vim
-au BufRead,BufNewFile *.gxc set filetype=gxc
-```
-
-## Syntax Highlighting
-
-For basic syntax highlighting, you can configure Treesitter or use a simple vim syntax file.
-
-### Option 1: Use HTML syntax as fallback
-
-Add to your configuration:
-
-```lua
-vim.api.nvim_create_autocmd({"BufRead", "BufNewFile"}, {
-  pattern = "*.gxc",
-  callback = function()
-    vim.bo.filetype = "html"
-  end,
-})
-```
-
-### Option 2: Custom syntax file (basic)
-
-Create `~/.config/nvim/syntax/gxc.vim`:
-
-```vim
-" Basic GXC syntax highlighting
-if exists("b:current_syntax")
-  finish
-endif
-
-" Load HTML syntax as base
-runtime! syntax/html.vim
-unlet b:current_syntax
-
-" Go frontmatter
-syntax region gxcFrontmatter start=/\%^---$/ end=/^---$/ contains=@goCode
-syntax include @goCode syntax/go.vim
-
-" Galaxy directives
-syntax match gxcDirective /galaxy:\w\+/
-
-highlight link gxcDirective Keyword
-highlight link gxcFrontmatter Comment
-
-let b:current_syntax = "gxc"
-```
-
-## TOML Configuration Support
-
-The LSP also provides support for `galaxy.config.toml` files. To enable:
-
-```lua
--- Add TOML files to gxc LSP
-lspconfig.gxc.setup({
-  filetypes = { "gxc", "toml" },
-  root_dir = lspconfig.util.root_pattern("galaxy.config.toml", ".git"),
-})
-```
-
-Or use a more specific pattern:
-
-```lua
-vim.api.nvim_create_autocmd({"BufRead", "BufNewFile"}, {
-  pattern = "galaxy.config.toml",
-  callback = function()
-    vim.lsp.start({
-      name = "gxc",
-      cmd = { "galaxy", "lsp-server" },
-      root_dir = vim.fs.dirname(vim.fs.find({"galaxy.config.toml"}, { upward = true })[1]),
-    })
-  end,
-})
-```
+1. Open a `.gxc` file in NeoVim
+2. Check filetype: `:set filetype?` (should show `gxc`)
+3. Check LSP status: `:LspInfo`
+4. Test completion: Start typing in a `.gxc` file
 
 ## Troubleshooting
 
-### LSP not starting
+**LSP not starting:**
+- Verify `galaxy` is in PATH: `which galaxy`
+- Check LSP logs: `:LspLog`
+- Ensure `galaxy lsp-server` command exists: `galaxy --help | grep lsp`
 
-1. Check if galaxy is installed and in PATH:
+**No syntax highlighting:**
+- Verify filetype is detected: `:set filetype?`
+- Check syntax file is loaded: `:scriptnames | grep gxc`
+
+**Galaxy binary not found:**
 ```bash
-which galaxy
-galaxy lsp-server --help
+# Rebuild and install galaxy
+cd /path/to/galaxy
+go build -o galaxy ./cmd/galaxy
+sudo mv galaxy /usr/local/bin/
 ```
-
-2. Check LSP logs in Neovim:
-```vim
-:LspLog
-```
-
-3. Verify file type is set correctly:
-```vim
-:set filetype?
-```
-
-### No completions or diagnostics
-
-1. Ensure LSP client is attached:
-```vim
-:LspInfo
-```
-
-2. Check if the LSP server is running:
-```vim
-:lua print(vim.inspect(vim.lsp.get_active_clients()))
-```
-
-### Custom galaxy binary path
-
-If `galaxy` is not in your PATH, specify the full path:
-
-```lua
-configs.gxc = {
-  default_config = {
-    cmd = { "/full/path/to/galaxy", "lsp-server" },
-    -- ... rest of config
-  },
-}
-```
-
-## Example GXC File
-
-```gxc
----
-var title = "Hello World"
-var items = []string{"A", "B", "C"}
----
-<h1>{title}</h1>
-<ul>
-  <li galaxy:for={item in items}>{item}</li>
-</ul>
-
-<style scoped>
-h1 { color: blue; }
-</style>
-```
-
-## Additional Resources
-
-- [Galaxy Documentation](https://github.com/withgalaxy/galaxy)
-- [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig)
-- [LSP Configuration Guide](https://github.com/neovim/nvim-lspconfig/blob/master/doc/server_configurations.md)
