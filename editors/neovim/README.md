@@ -14,7 +14,7 @@ Language server support for `.gxc` files (Galaxy components) and `galaxy.config.
 
 1. Install Galaxy CLI:
 ```bash
-GOSUMDB=off go install github.com/withgalaxy/galaxy/cmd/galaxy@v0.46.0-alpha.2
+go install github.com/withgalaxy/galaxy/cmd/galaxy@v0.46.0-alpha.2
 ```
 
 2. Ensure `galaxy` is in your PATH:
