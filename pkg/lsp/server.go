@@ -72,7 +72,7 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "gxc-language-server",
-			Version: "0.15.0",
+			Version: "0.46.0-alpha.1",
 		},
 	}, nil
 }
