@@ -60,7 +60,7 @@ github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UV
 github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
-github.com/withgalaxy/orbit v0.1.1 h1:wSyPyc6Fla42Swq75q1RPUmVX63HOz5tqOwoQTuJcBg=
+github.com/withgalaxy/orbit v0.1.1 h1:gp+U3AIVzBQnM406GoSM0M0yDCNGQFK/kbKIwPVpyqY=
 github.com/withgalaxy/orbit v0.1.1/go.mod h1:nLPGIlqMG/JqNyBysi50thzeXoZARTeoPebJUvA0wUo=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/goldmark v1.4.5/go.mod h1:rmuwmfZ0+bvzB24eSC//bk1R1Zp3hM0OXYv/G2LIilg=

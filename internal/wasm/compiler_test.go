@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/withgalaxy/galaxy/pkg/moduleutil"
 )
 
 func TestNewCompiler(t *testing.T) {
@@ -472,7 +474,7 @@ increment()`
 }
 
 func TestFindModuleRoot(t *testing.T) {
-	root := findModuleRoot()
+	root := moduleutil.FindGalaxyModuleRoot()
 
 	if root == "" {
 		t.Error("Expected to find module root")

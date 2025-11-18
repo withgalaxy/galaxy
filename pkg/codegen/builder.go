@@ -14,6 +14,7 @@ import (
 	"github.com/withgalaxy/galaxy/pkg/executor"
 	"github.com/withgalaxy/galaxy/pkg/parser"
 	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/version"
 	"github.com/withgalaxy/galaxy/pkg/wasm"
 )
 
@@ -219,6 +220,7 @@ func (b *CodegenBuilder) generateGoMod(serverDir string) error {
 	}
 
 	// Verify galaxy path exists
+	hasLocalGalaxy := false
 	if _, err := os.Stat(filepath.Join(galaxyPath, "go.mod")); os.IsNotExist(err) {
 		// Try finding galaxy relative to current binary
 		execPath, _ := os.Executable()
@@ -228,8 +230,11 @@ func (b *CodegenBuilder) generateGoMod(serverDir string) error {
 		if absTest, err := filepath.Abs(testPath); err == nil {
 			if _, err := os.Stat(filepath.Join(absTest, "go.mod")); err == nil {
 				galaxyPath = absTest
+				hasLocalGalaxy = true
 			}
 		}
+	} else {
+		hasLocalGalaxy = true
 	}
 
 	// Convert cwd to absolute for project replace
@@ -238,13 +243,19 @@ func (b *CodegenBuilder) generateGoMod(serverDir string) error {
 		absCwd = cwd
 	}
 
-	// Build go.mod with replace directives
+	// Build go.mod
 	goMod := fmt.Sprintf(`module %s
 
 go 1.23
 
-replace github.com/withgalaxy/galaxy => %s
-`, b.ModuleName, galaxyPath)
+`, b.ModuleName)
+
+	// Only add replace directive if we have a local Galaxy path
+	if hasLocalGalaxy {
+		goMod += fmt.Sprintf(`replace github.com/withgalaxy/galaxy => %s
+
+`, galaxyPath)
+	}
 
 	// Add replace for project's own module (so local imports work)
 	// This is necessary when the project imports its own packages
@@ -254,8 +265,17 @@ replace github.com/withgalaxy/galaxy => %s
 `, projectModule, absCwd)
 	}
 
-	goMod += `require github.com/withgalaxy/galaxy v0.0.0
+	// Use published version if no local Galaxy found
+	if hasLocalGalaxy {
+		goMod += `require github.com/withgalaxy/galaxy v0.0.0
 `
+	} else {
+		v := version.Version
+		if v[0] != 'v' {
+			v = "v" + v
+		}
+		goMod += fmt.Sprintf("require github.com/withgalaxy/galaxy %s\n", v)
+	}
 
 	return os.WriteFile(filepath.Join(serverDir, "go.mod"), []byte(goMod), 0644)
 }

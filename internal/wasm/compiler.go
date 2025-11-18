@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/withgalaxy/galaxy/pkg/cli"
+	"github.com/withgalaxy/galaxy/pkg/moduleutil"
 )
 
 type Compiler struct {
@@ -62,11 +65,9 @@ func (c *Compiler) Compile(script, pagePath string) (*CompiledModule, error) {
 	}
 
 	goMod := filepath.Join(buildDir, "go.mod")
-	moduleRoot := findModuleRoot()
-	if moduleRoot == "" {
-		return nil, fmt.Errorf("could not find galaxy module root")
-	}
-	moduleContent := fmt.Sprintf("module wasmscript\n\ngo 1.21\n\nrequire github.com/withgalaxy/galaxy v0.0.0\n\nreplace github.com/withgalaxy/galaxy => %s\n", moduleRoot)
+	moduleRoot := moduleutil.FindGalaxyModuleRoot()
+	moduleContent := "module wasmscript\n\ngo 1.21\n\n" + moduleutil.GetGalaxyModuleRequirement(moduleRoot, cli.Version)
+
 	if err := os.WriteFile(goMod, []byte(moduleContent), 0644); err != nil {
 		return nil, fmt.Errorf("write go.mod: %w", err)
 	}
@@ -129,35 +130,6 @@ func (c *Compiler) Compile(script, pagePath string) (*CompiledModule, error) {
 		WasmPath: finalWasm,
 		Hash:     hash,
 	}, nil
-}
-
-func findModuleRoot() string {
-	exePath, err := os.Executable()
-	if err == nil {
-		exePath, _ = filepath.EvalSymlinks(exePath)
-		dir := filepath.Dir(exePath)
-		for {
-			goModPath := filepath.Join(dir, "go.mod")
-			if data, err := os.ReadFile(goModPath); err == nil {
-				if strings.Contains(string(data), "module github.com/withgalaxy/galaxy") {
-					return dir
-				}
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-
-	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/withgalaxy/galaxy")
-	output, err := cmd.Output()
-	if err == nil && len(output) > 0 {
-		return strings.TrimSpace(string(output))
-	}
-
-	return ""
 }
 
 func prepareScript(script, hash string, useTinyGo bool) (string, error) {

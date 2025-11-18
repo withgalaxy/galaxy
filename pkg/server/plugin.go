@@ -7,11 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"plugin"
+	"strings"
 
 	"github.com/withgalaxy/galaxy/pkg/codegen"
 	"github.com/withgalaxy/galaxy/pkg/parser"
 	"github.com/withgalaxy/galaxy/pkg/router"
-	"strings"
+	"github.com/withgalaxy/galaxy/pkg/version"
 )
 
 type PluginCompiler struct {
@@ -134,19 +135,40 @@ func init() {
 		}
 	}
 
+	// Check if GalaxyPath is valid
+	hasLocalGalaxy := pc.GalaxyPath != ""
+	if hasLocalGalaxy {
+		if _, err := os.Stat(filepath.Join(pc.GalaxyPath, "go.mod")); os.IsNotExist(err) {
+			hasLocalGalaxy = false
+		}
+	}
+
 	goMod := fmt.Sprintf(`module %s
 
 go 1.23
 
-replace github.com/withgalaxy/galaxy => %s
-`, uniqueModuleName, pc.GalaxyPath)
+`, uniqueModuleName)
+
+	if hasLocalGalaxy {
+		goMod += fmt.Sprintf(`replace github.com/withgalaxy/galaxy => %s
+
+`, pc.GalaxyPath)
+	}
 
 	// Add project module replace if it exists
 	if projectModule != "" && projectPath != "" {
-		goMod += fmt.Sprintf("\nreplace %s => %s\n", projectModule, projectPath)
+		goMod += fmt.Sprintf("replace %s => %s\n\n", projectModule, projectPath)
 	}
 
-	goMod += "\nrequire github.com/withgalaxy/galaxy v0.0.0\n"
+	if hasLocalGalaxy {
+		goMod += "require github.com/withgalaxy/galaxy v0.0.0\n"
+	} else {
+		v := version.Version
+		if v[0] != 'v' {
+			v = "v" + v
+		}
+		goMod += fmt.Sprintf("require github.com/withgalaxy/galaxy %s\n", v)
+	}
 
 	// Require project module if it exists
 	if projectModule != "" {

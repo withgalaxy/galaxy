@@ -9,6 +9,7 @@ import (
 
 	"github.com/withgalaxy/galaxy/pkg/parser"
 	"github.com/withgalaxy/galaxy/pkg/router"
+	"github.com/withgalaxy/galaxy/pkg/version"
 )
 
 type SSGCodegenBuilder struct {
@@ -209,18 +210,33 @@ func (b *SSGCodegenBuilder) getOutputPath(pattern string) string {
 
 func (b *SSGCodegenBuilder) generateGoMod(buildDir string) error {
 	galaxyPath, err := findGalaxyRoot()
-	if err != nil {
-		galaxyPath = "../../.."
+	hasLocalGalaxy := err == nil && galaxyPath != ""
+
+	// Verify path exists
+	if hasLocalGalaxy {
+		if _, err := os.Stat(filepath.Join(galaxyPath, "go.mod")); os.IsNotExist(err) {
+			hasLocalGalaxy = false
+		}
 	}
 
 	goMod := fmt.Sprintf(`module %s
 
 go 1.23
 
-replace github.com/withgalaxy/galaxy => %s
+`, b.ModuleName)
+
+	if hasLocalGalaxy {
+		goMod += fmt.Sprintf(`replace github.com/withgalaxy/galaxy => %s
 
 require github.com/withgalaxy/galaxy v0.0.0
-`, b.ModuleName, galaxyPath)
+`, galaxyPath)
+	} else {
+		v := version.Version
+		if v[0] != 'v' {
+			v = "v" + v
+		}
+		goMod += fmt.Sprintf("require github.com/withgalaxy/galaxy %s\n", v)
+	}
 
 	return os.WriteFile(filepath.Join(buildDir, "go.mod"), []byte(goMod), 0644)
 }

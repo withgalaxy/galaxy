@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/withgalaxy/galaxy/pkg/adapters"
+	"github.com/withgalaxy/galaxy/pkg/version"
 )
 
 type StandaloneAdapter struct{}
@@ -312,18 +313,32 @@ func (a *StandaloneAdapter) generateGoMod(cfg *adapters.BuildConfig) error {
 	modPath := filepath.Join(cfg.ServerDir, "go.mod")
 
 	galaxyPath, err := a.getGalaxyModulePath()
-	if err != nil {
-		return err
+	hasLocalGalaxy := err == nil && galaxyPath != ""
+
+	// Verify path exists
+	if hasLocalGalaxy {
+		if _, err := os.Stat(filepath.Join(galaxyPath, "go.mod")); os.IsNotExist(err) {
+			hasLocalGalaxy = false
+		}
 	}
 
-	content := fmt.Sprintf(`module galaxy-server
+	content := `module galaxy-server
 
 go 1.21
 
-replace github.com/withgalaxy/galaxy => %s
+`
+	if hasLocalGalaxy {
+		content += fmt.Sprintf(`replace github.com/withgalaxy/galaxy => %s
 
 require github.com/withgalaxy/galaxy v0.0.0
 `, galaxyPath)
+	} else {
+		v := version.Version
+		if v[0] != 'v' {
+			v = "v" + v
+		}
+		content += fmt.Sprintf("require github.com/withgalaxy/galaxy %s\n", v)
+	}
 
 	return os.WriteFile(modPath, []byte(content), 0644)
 }

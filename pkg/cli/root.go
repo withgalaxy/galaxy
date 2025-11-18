@@ -5,10 +5,11 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/withgalaxy/galaxy/pkg/version"
 )
 
 var (
-	Version = "0.46.0-alpha.2"
+	Version = version.Version
 	cfgFile string
 	rootDir string
 	verbose bool
