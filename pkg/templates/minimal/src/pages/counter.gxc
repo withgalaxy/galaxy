@@ -67,7 +67,7 @@ var title = "WASM Counter"
 
 <script>
 import "fmt"
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 count := 0
 incBtn := wasmdom.GetElementById("increment")

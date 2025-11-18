@@ -32,7 +32,7 @@ button {
 
 <script>
 import "fmt"
-import "github.com/cameron-webmatter/galaxy/pkg/wasmdom"
+import "github.com/withgalaxy/galaxy/pkg/wasmdom"
 
 clicks := 0
 btn := wasmdom.GetElementById("btn")
